@@ -35,7 +35,7 @@ async function runGenerate(): Promise<void> {
       symmetryBreak: parseInt(breakRange.value, 10),
     });
 
-    renderDungeon(svg, result.rooms);
+    renderDungeon(svg, result.rooms, result.corridors);
     statRooms.textContent = String(result.rooms.length);
     statTarget.textContent = String(result.target);
     statDepth.textContent = String(result.maxDepth);

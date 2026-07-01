@@ -12,6 +12,12 @@ export interface Room {
   depth: number;
 }
 
+export interface Corridor {
+  parentId: number;
+  childId: number;
+  points: [number, number][];
+}
+
 export interface GenerateRequest {
   seed?: string;
   size: Size;
@@ -23,4 +29,5 @@ export interface GenerateResponse {
   target: number;
   maxDepth: number;
   rooms: Room[];
+  corridors: Corridor[];
 }
