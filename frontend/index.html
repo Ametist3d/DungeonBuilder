@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dungeon Generator</title>
+</head>
+<body>
+  <header>
+    <h1>Dungeon generator — step 1: room tree</h1>
+    <p>Symmetric branching algorithm, served from a Python backend. No loops or ink rendering yet.</p>
+  </header>
+  <div id="controls">
+    <div class="field">
+      <label>Seed</label>
+      <input id="seedInput" type="text" />
+    </div>
+    <div class="field">
+      <label>Size</label>
+      <select id="sizeSelect">
+        <option value="small">Small (3–6 rooms)</option>
+        <option value="medium" selected>Medium (6–12 rooms)</option>
+        <option value="large">Large (12–25 rooms)</option>
+      </select>
+    </div>
+    <div class="field">
+      <label>Symmetry break: <span id="breakVal">30</span>%</label>
+      <input id="breakRange" type="range" min="0" max="80" value="30" />
+    </div>
+    <button id="genBtn">Generate (Enter)</button>
+    <button id="randSeedBtn" class="secondary">Random seed</button>
+  </div>
+  <div id="stage">
+    <div id="canvas-wrap">
+      <svg id="canvas" viewBox="0 0 800 600" preserveAspectRatio="xMidYMid meet"></svg>
+    </div>
+    <div id="sidebar">
+      <h2>Stats</h2>
+      <div class="stat"><span>Rooms placed</span><span id="statRooms">–</span></div>
+      <div class="stat"><span>Target</span><span id="statTarget">–</span></div>
+      <div class="stat"><span>Max depth</span><span id="statDepth">–</span></div>
+      <div class="stat"><span>Seed</span><span id="statSeed">–</span></div>
+      <p class="note">Generation now runs on the Python backend — this page only renders what it gets back over HTTP.</p>
+    </div>
+  </div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
