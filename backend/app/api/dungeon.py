@@ -17,7 +17,10 @@ def generate(req: GenerateRequest) -> GenerateResponse:
     count_rng = make_rng(seed + "#count")
     target = count_rng.randint(lo, hi)
 
-    rooms, corridors = generate_dungeon(seed, target, req.symmetry_break)
+    rooms, corridors = generate_dungeon(
+        seed, target, req.symmetry_break,
+        shape_weights=(req.rect_pct, req.circle_pct, req.octagon_pct),
+    )
     max_depth = max((r.depth for r in rooms), default=0)
 
     return GenerateResponse(
@@ -28,6 +31,7 @@ def generate(req: GenerateRequest) -> GenerateResponse:
             Room(
                 id=r.id, x=r.x, y=r.y, w=r.w, h=r.h,
                 parent_id=r.parent_id, entrance_dir=r.entrance_dir, depth=r.depth,
+                shape=r.shape,
             )
             for r in rooms
         ],

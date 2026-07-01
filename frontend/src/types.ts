@@ -1,5 +1,6 @@
 export type Direction = 'N' | 'E' | 'S' | 'W';
 export type Size = 'small' | 'medium' | 'large';
+export type Shape = 'rect' | 'circle' | 'octagon';
 
 export interface Room {
   id: number;
@@ -10,18 +11,22 @@ export interface Room {
   parentId: number | null;
   entranceDir: Direction | null;
   depth: number;
-}
-
-export interface Corridor {
-  parentId: number;
-  childId: number;
-  points: [number, number][];
+  shape: Shape;
 }
 
 export interface GenerateRequest {
   seed?: string;
   size: Size;
   symmetryBreak: number;
+  rectPct: number;
+  circlePct: number;
+  octagonPct: number;
+}
+
+export interface Corridor {
+  parentId: number;
+  childId: number;
+  points: [number, number][];
 }
 
 export interface GenerateResponse {

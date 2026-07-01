@@ -16,6 +16,18 @@ const statTarget = document.getElementById('statTarget') as HTMLSpanElement;
 const statDepth = document.getElementById('statDepth') as HTMLSpanElement;
 const statSeed = document.getElementById('statSeed') as HTMLSpanElement;
 
+const rectPctRange = document.getElementById('rectPctRange') as HTMLInputElement;
+const circlePctRange = document.getElementById('circlePctRange') as HTMLInputElement;
+const hexPctRange = document.getElementById('hexPctRange') as HTMLInputElement;
+const rectPctVal = document.getElementById('rectPctVal') as HTMLSpanElement;
+const circlePctVal = document.getElementById('circlePctVal') as HTMLSpanElement;
+const octagonPctRange = document.getElementById('octagonPctRange') as HTMLInputElement;
+const octagonPctVal = document.getElementById('octagonPctVal') as HTMLSpanElement;
+
+rectPctRange.addEventListener('input', () => { rectPctVal.textContent = rectPctRange.value; });
+circlePctRange.addEventListener('input', () => { circlePctVal.textContent = circlePctRange.value; });
+octagonPctRange.addEventListener('input', () => { octagonPctVal.textContent = octagonPctRange.value; });
+
 breakRange.addEventListener('input', () => {
   breakVal.textContent = breakRange.value;
 });
@@ -33,6 +45,9 @@ async function runGenerate(): Promise<void> {
       seed,
       size: sizeSelect.value as Size,
       symmetryBreak: parseInt(breakRange.value, 10),
+      rectPct: parseInt(rectPctRange.value, 10),
+      circlePct: parseInt(circlePctRange.value, 10),
+      octagonPct: parseInt(octagonPctRange.value, 10),
     });
 
     renderDungeon(svg, result.rooms, result.corridors);
@@ -45,6 +60,8 @@ async function runGenerate(): Promise<void> {
     statRooms.textContent = 'error — is the backend running?';
   }
 }
+
+
 
 genBtn.addEventListener('click', runGenerate);
 randSeedBtn.addEventListener('click', () => {

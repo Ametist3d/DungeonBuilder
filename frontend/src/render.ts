@@ -4,6 +4,21 @@ const NS = 'http://www.w3.org/2000/svg';
 const OPPOSITE: Record<string, string> = { N: 'S', S: 'N', E: 'W', W: 'E' };
 const UNIT = 28;
 const CORRIDOR_GRID_WIDTH = 1;
+const HATCH_LEN = 5;
+const HATCH_GAP = 7;
+
+// Chamfered-square octagon: flat edges land exactly on the bounding box at
+// all four cardinal points (tan(22.5°) = √2 − 1), so corridor attachment
+// points computed from box edges always meet the actual silhouette.
+const octagonVertices = (cx: number, cy: number, R: number): [number, number][] => {
+  const m = R * (Math.SQRT2 - 1);
+  return [
+    [cx - m, cy - R], [cx + m, cy - R],
+    [cx + R, cy - m], [cx + R, cy + m],
+    [cx + m, cy + R], [cx - m, cy + R],
+    [cx - R, cy + m], [cx - R, cy - m],
+  ];
+};
 
 export function renderDungeon(svg: SVGSVGElement, rooms: Room[], corridors: Corridor[] = []): void {
   svg.innerHTML = '';
@@ -36,25 +51,7 @@ export function renderDungeon(svg: SVGSVGElement, rooms: Room[], corridors: Corr
   const corridorPairs = new Set<string>();
   corridors.forEach((c) => corridorPairs.add(`${c.parentId}-${c.childId}`));
 
-  const CORRIDOR_HATCH_GAP = 6;
-  const hatchCorridorSide = (x0: number, y0: number, x1: number, y1: number) => {
-    const dx = x1 - x0, dy = y1 - y0;
-    const len = Math.hypot(dx, dy);
-    const steps = Math.max(1, Math.round(len / CORRIDOR_HATCH_GAP));
-    for (let i = 0; i <= steps; i++) {
-      const t = document.createElementNS(NS, 'line');
-      const sx = x0 + (dx * i) / steps;
-      const sy = y0 + (dy * i) / steps;
-      t.setAttribute('x1', String(sx));
-      t.setAttribute('y1', String(sy));
-      t.setAttribute('x2', String(sx + (dy === 0 ? 0 : 3)));
-      t.setAttribute('y2', String(sy + (dx === 0 ? 0 : 3)));
-      t.setAttribute('class', 'corridor-hatch');
-      svg.appendChild(t);
-    }
-  };
-
-  // corridors first, so room walls sit visually on top of their mouths
+  // --- corridors first, so room walls sit visually on top of their mouths ---
   const CORRIDOR_PX = CORRIDOR_GRID_WIDTH * UNIT;
   const pathFromPoints = (points: [number, number][]): string =>
     points
@@ -80,40 +77,57 @@ export function renderDungeon(svg: SVGSVGElement, rooms: Room[], corridors: Corr
     svg.appendChild(floor);
   }
 
-  // rooms + labels
+  // --- rooms + numbered key badges ---
   for (const r of rooms) {
     const [px, py] = toPx(r.x, r.y);
+    const w = r.w * UNIT, h = r.h * UNIT;
+    const shapeClass = 'room-rect' + (r.parentId === null ? ' root' : '');
 
-    const rect = document.createElementNS(NS, 'rect');
-    rect.setAttribute('x', String(px));
-    rect.setAttribute('y', String(py));
-    rect.setAttribute('width', String(r.w * UNIT));
-    rect.setAttribute('height', String(r.h * UNIT));
-    rect.setAttribute('class', 'room-rect' + (r.parentId === null ? ' root' : ''));
-    svg.appendChild(rect);
+    if (r.shape === 'circle') {
+      const cx = px + w / 2, cy = py + h / 2;
+      const R = Math.min(w, h) / 2;
+      const circle = document.createElementNS(NS, 'circle');
+      circle.setAttribute('cx', String(cx));
+      circle.setAttribute('cy', String(cy));
+      circle.setAttribute('r', String(R));
+      circle.setAttribute('class', shapeClass);
+      svg.appendChild(circle);
+    } else if (r.shape === 'octagon') {
+      const cx = px + w / 2, cy = py + h / 2;
+      const R = Math.min(w, h) / 2;
+      const poly = document.createElementNS(NS, 'polygon');
+      poly.setAttribute('points', octagonVertices(cx, cy, R).map(([x, y]) => `${x},${y}`).join(' '));
+      poly.setAttribute('class', shapeClass);
+      svg.appendChild(poly);
+    } else {
+      const rect = document.createElementNS(NS, 'rect');
+      rect.setAttribute('x', String(px));
+      rect.setAttribute('y', String(py));
+      rect.setAttribute('width', String(w));
+      rect.setAttribute('height', String(h));
+      rect.setAttribute('class', shapeClass);
+      svg.appendChild(rect);
+    }
 
-    const cx = px + 12;
-    const cy = py + 12;
+    const bx = px + 12;
+    const by = py + 12;
     const numGroup = document.createElementNS(NS, 'g');
     numGroup.setAttribute('class', 'room-number');
-    const circle = document.createElementNS(NS, 'circle');
-    circle.setAttribute('cx', String(cx));
-    circle.setAttribute('cy', String(cy));
-    circle.setAttribute('r', '9');
-    numGroup.appendChild(circle);
+    const badge = document.createElementNS(NS, 'circle');
+    badge.setAttribute('cx', String(bx));
+    badge.setAttribute('cy', String(by));
+    badge.setAttribute('r', '9');
+    numGroup.appendChild(badge);
     const label = document.createElementNS(NS, 'text');
-    label.setAttribute('x', String(cx));
-    label.setAttribute('y', String(cy + 4));
+    label.setAttribute('x', String(bx));
+    label.setAttribute('y', String(by + 4));
     label.setAttribute('text-anchor', 'middle');
     label.textContent = String(r.id);
     numGroup.appendChild(label);
     svg.appendChild(numGroup);
   }
 
-  // "Dyson hatching" -- short perpendicular ticks along the outside of a wall,
-  // the shadow-etched look that defines watabou's style.
-  const HATCH_LEN = 5;
-  const HATCH_GAP = 7;
+  // --- "Dyson hatching": short perpendicular ticks along the outside of each wall ---
   const hatchEdge = (x0: number, y0: number, x1: number, y1: number) => {
     const dx = x1 - x0, dy = y1 - y0;
     const len = Math.hypot(dx, dy);
@@ -136,14 +150,41 @@ export function renderDungeon(svg: SVGSVGElement, rooms: Room[], corridors: Corr
   for (const r of rooms) {
     const [px, py] = toPx(r.x, r.y);
     const w = r.w * UNIT, h = r.h * UNIT;
-    hatchEdge(px, py, px + w, py);         // north
-    hatchEdge(px + w, py, px + w, py + h); // east
-    hatchEdge(px + w, py + h, px, py + h); // south
-    hatchEdge(px, py + h, px, py);         // west
+
+    if (r.shape === 'circle') {
+      const cx = px + w / 2, cy = py + h / 2;
+      const R = Math.min(w, h) / 2;
+      const steps = Math.max(8, Math.round((2 * Math.PI * R) / HATCH_GAP));
+      for (let i = 0; i < steps; i++) {
+        const a = (2 * Math.PI * i) / steps;
+        const sx = cx + R * Math.cos(a), sy = cy + R * Math.sin(a);
+        const tick = document.createElementNS(NS, 'line');
+        tick.setAttribute('x1', String(sx));
+        tick.setAttribute('y1', String(sy));
+        tick.setAttribute('x2', String(sx + HATCH_LEN * Math.cos(a)));
+        tick.setAttribute('y2', String(sy + HATCH_LEN * Math.sin(a)));
+        tick.setAttribute('class', 'hatch-tick');
+        svg.appendChild(tick);
+      }
+    } else if (r.shape === 'octagon') {
+      const cx = px + w / 2, cy = py + h / 2;
+      const R = Math.min(w, h) / 2;
+      const pts = octagonVertices(cx, cy, R);
+      for (let i = 0; i < 8; i++) {
+        const [x0, y0] = pts[i];
+        const [x1, y1] = pts[(i + 1) % 8];
+        hatchEdge(x0, y0, x1, y1);
+      }
+    } else {
+      hatchEdge(px, py, px + w, py);
+      hatchEdge(px + w, py, px + w, py + h);
+      hatchEdge(px + w, py + h, px, py + h);
+      hatchEdge(px, py + h, px, py);
+    }
   }
 
-  // door glyph: a light gap punched in the wall stroke + a short tick across the threshold
-const drawDoor = (gx: number, gy: number, vertical: boolean) => {
+  // --- door glyph: a gap punched in the wall + a short double-tick across the threshold ---
+  const drawDoor = (gx: number, gy: number, vertical: boolean) => {
     const [px, py] = toPx(gx, gy);
 
     const gap = document.createElementNS(NS, 'rect');
@@ -181,6 +222,7 @@ const drawDoor = (gx: number, gy: number, vertical: boolean) => {
     makeTick(2);
   };
 
+  // --- compass rose ---
   const compass = document.createElementNS(NS, 'g');
   compass.setAttribute('class', 'compass-rose');
   compass.setAttribute('transform', `translate(${pxW - 40}, 40)`);
@@ -197,6 +239,7 @@ const drawDoor = (gx: number, gy: number, vertical: boolean) => {
   compass.appendChild(nLabel);
   svg.appendChild(compass);
 
+  // --- scale bar ---
   const scale = document.createElementNS(NS, 'g');
   scale.setAttribute('class', 'scale-bar');
   scale.setAttribute('transform', `translate(20, ${pxH - 24})`);
@@ -210,24 +253,24 @@ const drawDoor = (gx: number, gy: number, vertical: boolean) => {
   scale.appendChild(scaleLabel);
   svg.appendChild(scale);
 
-  // every corridor -- tree-grown or a leaf-loop bridge -- gets doors at both mouths
+  // --- doors: every corridor -- tree-grown or a leaf-loop bridge -- gets doors at both mouths ---
   const drawCorridorDoor = (p0: [number, number], p1: [number, number]) => {
-  const [x0, y0] = p0;
-  const [x1, y1] = p1;
-  if (y0 === y1) {
-    drawDoor(x0, y0 - 0.5, true);   // travel is E/W -- pierces a vertical wall
-  } else {
-    drawDoor(x0 - 0.5, y0, false);  // travel is N/S -- pierces a horizontal wall
+    const [x0, y0] = p0;
+    const [x1, y1] = p1;
+    if (y0 === y1) {
+      drawDoor(x0, y0 - 0.5, true);   // travel is E/W -- pierces a vertical wall
+    } else {
+      drawDoor(x0 - 0.5, y0, false);  // travel is N/S -- pierces a horizontal wall
+    }
+  };
+
+  for (const c of corridors) {
+    const pts = c.points;
+    drawCorridorDoor(pts[0], pts[1]);
+    drawCorridorDoor(pts[pts.length - 1], pts[pts.length - 2]);
   }
-};
 
-for (const c of corridors) {
-  const pts = c.points;
-  drawCorridorDoor(pts[0], pts[1]);
-  drawCorridorDoor(pts[pts.length - 1], pts[pts.length - 2]);
-}
-
-  // rooms directly flush against their tree parent (no corridor) get one door each
+  // --- rooms directly flush against their tree parent (no corridor) get one door each ---
   for (const r of rooms) {
     if (r.parentId === null || r.entranceDir === null) continue;
     if (corridorPairs.has(`${r.parentId}-${r.id}`)) continue;

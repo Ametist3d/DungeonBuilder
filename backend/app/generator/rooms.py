@@ -6,6 +6,9 @@ from typing import Optional
 
 from .rng import make_rng
 
+ROUND_MIN_DIM = 3  # circle/octagon diameter -- always even, so the box-center used
+ROUND_MAX_DIM = 8  # for corridor attachment lands exactly on the shape's boundary
+
 OPPOSITE = {"N": "S", "S": "N", "E": "W", "W": "E"}
 PERPENDICULAR = {"N": ["E", "W"], "S": ["E", "W"], "E": ["N", "S"], "W": ["N", "S"]}
 SIZE_TARGETS = {"small": (3, 6), "medium": (6, 12), "large": (12, 25)}
@@ -20,29 +23,19 @@ PLACEMENT_RETRIES = 16
 
 
 CORRIDOR_WIDTH = 1
-CORRIDOR_CHANCE = 0.85        # probability a connection gets a corridor instead of a shared wall
-CORRIDOR_MIN_LEN = 3
-CORRIDOR_MAX_LEN = 10
-CORRIDOR_JOG_CHANCE = 0.65
-CORRIDOR_JOG_MIN = 2
-CORRIDOR_JOG_MAX = 6
-MIN_LEG = 2
+CORRIDOR_CHANCE = 0.85
+CORRIDOR_MIN_LEN = 2
+CORRIDOR_MAX_LEN = 6
+CORRIDOR_JOG_CHANCE = 0.7
+CORRIDOR_JOG_MIN = 1
+CORRIDOR_JOG_MAX = 3
+CORRIDOR_ZIGZAG_CHANCE = 0.35
+MIN_LEG = 1
 
 LOOP_CONNECT_CHANCE = 0.55
 LOOP_MIN_GAP = 1
-LOOP_MAX_GAP = 10
+LOOP_MAX_GAP = 6
 
-# @dataclass
-# class Corridor:
-#     x: int
-#     y: int
-#     w: int
-#     h: int
-#     parent_id: int
-#     child_id: int
-#     direction: str  # "N"/"E"/"S"/"W" -- points from parent_id's room toward child_id's room
-#     touches_parent: bool = True
-#     touches_child: bool = True
 
 @dataclass
 class _CorridorSeg:
@@ -71,6 +64,7 @@ class RoomNode:
     entrance_dir: Optional[str]
     parent_id: Optional[int]
     depth: int
+    shape: str = "rect"
     children: list[int] = field(default_factory=list)
 
 
@@ -86,6 +80,12 @@ def rects_overlap(
         or by + bh + margin <= ay
     )
 
+def _pick_dims(rng: random.Random, shape: str) -> tuple[int, int]:
+    if shape == "rect":
+        return rng.randint(ROOM_MIN_DIM, ROOM_MAX_DIM), rng.randint(ROOM_MIN_DIM, ROOM_MAX_DIM)
+    d = rng.randint(ROUND_MIN_DIM // 2, ROUND_MAX_DIM // 2) * 2
+    return d, d
+
 def _pick_pattern(rng: random.Random) -> list[str]:
     """sides-only / forward-only / both -- roughly watabou's described split."""
     roll = rng.random()
@@ -99,13 +99,48 @@ def _leaf_ids(rooms: list[RoomNode]) -> set[int]:
     has_children = {r.parent_id for r in rooms if r.parent_id is not None}
     return {r.id for r in rooms if r.id not in has_children}
 
+def _pick_shape(rng: random.Random, weights: tuple[float, float, float]) -> str:
+    """weights = (rect, circle, octagon), any non-negative numbers -- normalized internally."""
+    total = sum(weights)
+    if total <= 0:
+        return "rect"
+    roll = rng.random() * total
+    upto = 0.0
+    for shape, w in zip(("rect", "circle", "octagon"), weights):
+        upto += w
+        if roll <= upto:
+            return shape
+    return "rect"
+
+def _shared_anchor(parent: RoomNode, child: RoomNode, lo: int, hi: int, axis: str) -> Optional[int]:
+    """The perpendicular coordinate a straight bridge between parent and
+    child must use. Round/octagon rooms only touch their own box at its
+    exact center on this axis; two rects can use any point in the overlap."""
+    def center(room: RoomNode) -> int:
+        return (room.y + room.h // 2) if axis == "y" else (room.x + room.w // 2)
+
+    p_round, c_round = parent.shape != "rect", child.shape != "rect"
+    if p_round and c_round:
+        pc, cc = center(parent), center(child)
+        return pc if pc == cc and lo <= pc <= hi else None
+    if p_round:
+        pc = center(parent)
+        return pc if lo <= pc <= hi else None
+    if c_round:
+        cc = center(child)
+        return cc if lo <= cc <= hi else None
+    return lo + (hi - lo) // 2
 
 def _make_corridor_points(parent: RoomNode, child: RoomNode, direction: str) -> Optional[list[tuple[int, int]]]:
     """Straight centerline bridging the gap left between parent and child."""
     if direction in ("E", "W"):
         lo = max(parent.y, child.y)
         hi = min(parent.y + parent.h, child.y + child.h)
-        cy = lo + (hi - lo) // 2
+        if hi - lo < MIN_OVERLAP:
+            return None
+        cy = _shared_anchor(parent, child, lo, hi, "y")
+        if cy is None:
+            return None
         x0, x1 = (parent.x + parent.w, child.x) if direction == "E" else (child.x + child.w, parent.x)
         if x1 <= x0:
             return None
@@ -113,7 +148,11 @@ def _make_corridor_points(parent: RoomNode, child: RoomNode, direction: str) -> 
 
     lo = max(parent.x, child.x)
     hi = min(parent.x + parent.w, child.x + child.w)
-    cx = lo + (hi - lo) // 2
+    if hi - lo < MIN_OVERLAP:
+        return None
+    cx = _shared_anchor(parent, child, lo, hi, "x")
+    if cx is None:
+        return None
     y0, y1 = (parent.y + parent.h, child.y) if direction == "S" else (child.y + child.h, parent.y)
     if y1 <= y0:
         return None
@@ -193,6 +232,12 @@ def _route_points(a1, b1, a2, b2, rng, vertical_first=False):
         if hi - lo < 2 * MIN_LEG:
             return None
         turn = rng.randint(lo + MIN_LEG, hi - MIN_LEG)
+        if hi - lo >= 3 * MIN_LEG and rng.random() < CORRIDOR_ZIGZAG_CHANCE:
+            mid_b = b1 + (b2 - b1) // 2
+            lo2, hi2 = turn + MIN_LEG, hi - MIN_LEG
+            if lo2 <= hi2:
+                turn2 = rng.randint(lo2, hi2)
+                return [(a1, b1), (turn, b1), (turn, mid_b), (turn2, mid_b), (turn2, b2), (a2, b2)]        
         return [(a1, b1), (turn, b1), (turn, b2), (a2, b2)]
     if a1 == a2:
         return [(a1, b1), (a2, b2)]
@@ -200,6 +245,12 @@ def _route_points(a1, b1, a2, b2, rng, vertical_first=False):
     if hi - lo < 2 * MIN_LEG:
         return None
     turn = rng.randint(lo + MIN_LEG, hi - MIN_LEG)
+    if hi - lo >= 3 * MIN_LEG and rng.random() < CORRIDOR_ZIGZAG_CHANCE:
+        mid_a = a1 + (a2 - a1) // 2
+        lo2, hi2 = turn + MIN_LEG, hi - MIN_LEG
+        if lo2 <= hi2:
+            turn2 = rng.randint(lo2, hi2)
+            return [(a1, b1), (a1, turn), (mid_a, turn), (mid_a, turn2), (a2, turn2), (a2, b2)]    
     return [(a1, b1), (a1, turn), (a2, turn), (a2, b2)]
 
 
@@ -227,7 +278,7 @@ def _segments_from_points(points: list[tuple[int, int]]) -> list[_CorridorSeg]:
 
 
 def _route_corridor(
-    parent: RoomNode, direction: str, w: int, h: int, rng: random.Random,
+    parent: RoomNode, direction: str, w: int, h: int, rng: random.Random, child_shape: str = "rect",
 ) -> Optional[tuple[int, int, list[tuple[int, int]]]]:
     """Pick a reachable child position and the centerline waypoints
     connecting it to `parent`'s `direction` wall."""
@@ -238,9 +289,15 @@ def _route_corridor(
     if direction in ("E", "W"):
         if parent.h < 3 or h < 3:
             return None
-        ey = rng.randint(parent.y + 1, parent.y + parent.h - 2)
+        if parent.shape != "rect":
+            ey = parent.y + parent.h // 2
+        else:
+            ey = rng.randint(parent.y + 1, parent.y + parent.h - 2)
         ey2 = ey + jog
-        cy = ey2 - rng.randint(1, h - 2)
+        if child_shape != "rect":
+            cy = ey2 - h // 2
+        else:
+            cy = ey2 - rng.randint(1, h - 2)
         ex = parent.x + parent.w if direction == "E" else parent.x
         cx_wall = ex + gap if direction == "E" else ex - gap
         cx = cx_wall if direction == "E" else cx_wall - w
@@ -251,9 +308,15 @@ def _route_corridor(
 
     if parent.w < 3 or w < 3:
         return None
-    ex = rng.randint(parent.x + 1, parent.x + parent.w - 2)
+    if parent.shape != "rect":
+        ex = parent.x + parent.w // 2
+    else:
+        ex = rng.randint(parent.x + 1, parent.x + parent.w - 2)
     ex2 = ex + jog
-    cx = ex2 - rng.randint(1, w - 2)
+    if child_shape != "rect":
+        cx = ex2 - w // 2
+    else:
+        cx = ex2 - rng.randint(1, w - 2)
     ey = parent.y + parent.h if direction == "S" else parent.y
     cy_wall = ey + gap if direction == "S" else ey - gap
     cy = cy_wall if direction == "S" else cy_wall - h
@@ -279,22 +342,35 @@ def _placement_clear(
     return True
 
 
-def _place_flush(parent: RoomNode, direction: str, w: int, h: int, rng: random.Random, next_id: int) -> RoomNode:
+def _place_flush(
+    parent: RoomNode, direction: str, w: int, h: int, rng: random.Random, next_id: int, shape: str = "rect",
+) -> RoomNode:
+    """Direct wall-to-wall join, no corridor. A circle/octagon only reaches
+    its bounding box at the exact center of that box's edge -- there's no
+    valid offset range like a rect has, so either side being round forces
+    the join onto that one point."""
     if direction in ("E", "W"):
         x = parent.x + parent.w if direction == "E" else parent.x - w
-        lo, hi = parent.y - h + MIN_OVERLAP, parent.y + parent.h - MIN_OVERLAP
-        if lo > hi:
-            lo, hi = hi, lo
-        y = rng.randint(lo, hi)
+        if parent.shape != "rect":
+            wall_y = parent.y + parent.h // 2
+        elif parent.h >= 3:
+            wall_y = rng.randint(parent.y + 1, parent.y + parent.h - 2)
+        else:
+            wall_y = parent.y + parent.h // 2
+        y = wall_y - h // 2 if shape != "rect" else wall_y - rng.randint(1, max(1, h - 2))
     else:
         y = parent.y + parent.h if direction == "S" else parent.y - h
-        lo, hi = parent.x - w + MIN_OVERLAP, parent.x + parent.w - MIN_OVERLAP
-        if lo > hi:
-            lo, hi = hi, lo
-        x = rng.randint(lo, hi)
+        if parent.shape != "rect":
+            wall_x = parent.x + parent.w // 2
+        elif parent.w >= 3:
+            wall_x = rng.randint(parent.x + 1, parent.x + parent.w - 2)
+        else:
+            wall_x = parent.x + parent.w // 2
+        x = wall_x - w // 2 if shape != "rect" else wall_x - rng.randint(1, max(1, w - 2))
     return RoomNode(
         id=next_id, x=x, y=y, w=w, h=h,
         entrance_dir=OPPOSITE[direction], parent_id=parent.id, depth=parent.depth + 1,
+        shape=shape,
     )
 
 
@@ -305,40 +381,51 @@ def _try_spawn_child(
     corridor_segs: list[_CorridorSeg],
     rng: random.Random,
     next_id: int,
+    shape_weights: tuple[float, float, float],
 ) -> Optional[tuple[RoomNode, list[tuple[int, int]]]]:
-    w = rng.randint(ROOM_MIN_DIM, ROOM_MAX_DIM)
-    h = rng.randint(ROOM_MIN_DIM, ROOM_MAX_DIM)
+    shape = _pick_shape(rng, shape_weights)
+    w, h = _pick_dims(rng, shape)
     others = [r for r in rooms if r.id != parent.id]
 
     if rng.random() < CORRIDOR_CHANCE:
         for _ in range(PLACEMENT_RETRIES):
-            routed = _route_corridor(parent, direction, w, h, rng)
+            routed = _route_corridor(parent, direction, w, h, rng, child_shape=shape)
             if not routed:
                 continue
             cx, cy, points = routed
             candidate = RoomNode(
                 id=next_id, x=cx, y=cy, w=w, h=h,
                 entrance_dir=OPPOSITE[direction], parent_id=parent.id, depth=parent.depth + 1,
+                shape=shape,
             )
             if _placement_clear(candidate, points, others, corridor_segs):
                 return candidate, points
 
     for _ in range(PLACEMENT_RETRIES):
-        candidate = _place_flush(parent, direction, w, h, rng, next_id)
+        candidate = _place_flush(parent, direction, w, h, rng, next_id, shape)
         if _placement_clear(candidate, [], others, corridor_segs):
             return candidate, []
 
     return None
 
-def generate_dungeon(seed: str, target_count: int, symmetry_break_pct: int) -> tuple[list[RoomNode], list[Corridor]]:
+def generate_dungeon(
+    seed: str, target_count: int, symmetry_break_pct: int,
+    shape_weights: tuple[float, float, float] = (100.0, 0.0, 0.0),
+) -> tuple[list[RoomNode], list[Corridor]]:
     rng = make_rng(seed)
     next_id = 0
 
+    root_shape = _pick_shape(rng, shape_weights)
+    if root_shape == "rect":
+        root_w, root_h = rng.randint(4, 7), rng.randint(4, 7)
+    else:
+        root_w, root_h = _pick_dims(rng, root_shape)
     root = RoomNode(
         id=next_id,
         x=0, y=0,
-        w=rng.randint(4, 7), h=rng.randint(4, 7),
+        w=root_w, h=root_h,
         entrance_dir=None, parent_id=None, depth=0,
+        shape=root_shape,
     )
     next_id += 1
 
@@ -383,7 +470,7 @@ def generate_dungeon(seed: str, target_count: int, symmetry_break_pct: int) -> t
         for direction in kept:
             if len(rooms) >= target_count:
                 break
-            spawned = _try_spawn_child(parent, direction, rooms, corridor_segs, rng, next_id)
+            spawned = _try_spawn_child(parent, direction, rooms, corridor_segs, rng, next_id, shape_weights)
             if spawned:
                 child, points = spawned
                 next_id += 1
@@ -399,7 +486,7 @@ def generate_dungeon(seed: str, target_count: int, symmetry_break_pct: int) -> t
             for direction in sides + [forward_dir]:
                 if direction in kept or len(rooms) >= target_count:
                     continue
-                spawned = _try_spawn_child(parent, direction, rooms, corridor_segs, rng, next_id)
+                spawned = _try_spawn_child(parent, direction, rooms, corridor_segs, rng, next_id, shape_weights)
                 if spawned:
                     child, points = spawned
                     next_id += 1

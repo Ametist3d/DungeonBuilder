@@ -4,11 +4,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 Direction = Literal["N", "E", "S", "W"]
 Size = Literal["small", "medium", "large"]
-
+Shape = Literal["rect", "circle", "octagon"]
 
 class Room(BaseModel):
-    """A single rectangular room in grid units."""
-
     model_config = ConfigDict(populate_by_name=True)
 
     id: int
@@ -19,16 +17,18 @@ class Room(BaseModel):
     parent_id: Optional[int] = Field(None, alias="parentId")
     entrance_dir: Optional[Direction] = Field(None, alias="entranceDir")
     depth: int
+    shape: Shape = "rect"
 
 
 class GenerateRequest(BaseModel):
-    """Request body for POST /api/dungeon/generate."""
-
     model_config = ConfigDict(populate_by_name=True)
 
     seed: Optional[str] = None
     size: Size = "medium"
     symmetry_break: int = Field(30, ge=0, le=80, alias="symmetryBreak")
+    rect_pct: int = Field(60, ge=0, le=100, alias="rectPct")
+    circle_pct: int = Field(20, ge=0, le=100, alias="circlePct")
+    octagon_pct: int = Field(20, ge=0, le=100, alias="octagonPct")
 
 
 class Corridor(BaseModel):
