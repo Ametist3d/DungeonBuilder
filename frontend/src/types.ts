@@ -12,6 +12,7 @@ export interface Room {
   entranceDir: Direction | null;
   depth: number;
   shape: Shape;
+  accent: boolean
 }
 
 export interface GenerateRequest {
@@ -21,6 +22,7 @@ export interface GenerateRequest {
   rectPct: number;
   circlePct: number;
   octagonPct: number;
+  accentPct: number;
 }
 
 export interface Corridor {

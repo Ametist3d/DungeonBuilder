@@ -20,6 +20,7 @@ def generate(req: GenerateRequest) -> GenerateResponse:
     rooms, corridors, entrance, exit_opening  = generate_dungeon(
         seed, target, req.symmetry_break,
         shape_weights=(req.rect_pct, req.circle_pct, req.octagon_pct),
+        accent_pct=req.accent_pct,
     )
     max_depth = max((r.depth for r in rooms), default=0)
 
@@ -31,7 +32,7 @@ def generate(req: GenerateRequest) -> GenerateResponse:
             Room(
                 id=r.id, x=r.x, y=r.y, w=r.w, h=r.h,
                 parent_id=r.parent_id, entrance_dir=r.entrance_dir, depth=r.depth,
-                shape=r.shape,
+                shape=r.shape, accent=r.accent,
             )
             for r in rooms
         ],

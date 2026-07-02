@@ -83,8 +83,155 @@ export function renderDungeon(
   const corridorPairs = new Set<string>();
   corridors.forEach((c) => corridorPairs.add(`${c.parentId}-${c.childId}`));
 
-  // --- corridors first, so room walls sit visually on top of their mouths ---
   const CORRIDOR_PX = CORRIDOR_GRID_WIDTH * UNIT;
+
+  // Builds fresh copies of every room + corridor-leg silhouette, filled solid.
+  // Used for the drop-shadow and the exterior-halo mask -- both need the same
+  // "footprint" geometry but as independent DOM elements (SVG nodes can't be
+  // shared across two parents), so this is called once per use.
+  const buildFloorUnionShapes = (fill: string): SVGElement[] => {
+    const shapes: SVGElement[] = [];
+    for (const r of rooms) {
+      const [px, py] = toPx(r.x, r.y);
+      const w = r.w * UNIT, h = r.h * UNIT;
+      let el: SVGElement;
+      if (r.shape === 'circle') {
+        el = document.createElementNS(NS, 'circle');
+        el.setAttribute('cx', String(px + w / 2));
+        el.setAttribute('cy', String(py + h / 2));
+        el.setAttribute('r', String(Math.min(w, h) / 2));
+      } else if (r.shape === 'octagon') {
+        el = document.createElementNS(NS, 'polygon');
+        el.setAttribute('points', octagonVertices(px + w / 2, py + h / 2, Math.min(w, h) / 2).map(([x, y]) => `${x},${y}`).join(' '));
+      } else {
+        el = document.createElementNS(NS, 'rect');
+        el.setAttribute('x', String(px));
+        el.setAttribute('y', String(py));
+        el.setAttribute('width', String(w));
+        el.setAttribute('height', String(h));
+      }
+      el.setAttribute('fill', fill);
+      shapes.push(el);
+    }
+    for (const c of corridors) {
+      for (let i = 0; i < c.points.length - 1; i++) {
+        const [gx0, gy0] = c.points[i];
+        const [gx1, gy1] = c.points[i + 1];
+        const [px0, py0] = toPx(gx0, gy0);
+        const [px1, py1] = toPx(gx1, gy1);
+        const el = document.createElementNS(NS, 'rect');
+        if (gy0 === gy1) {
+          el.setAttribute('x', String(Math.min(px0, px1)));
+          el.setAttribute('y', String(py0 - CORRIDOR_PX / 2));
+          el.setAttribute('width', String(Math.abs(px1 - px0)));
+          el.setAttribute('height', String(CORRIDOR_PX));
+        } else {
+          el.setAttribute('x', String(px0 - CORRIDOR_PX / 2));
+          el.setAttribute('y', String(Math.min(py0, py1)));
+          el.setAttribute('width', String(CORRIDOR_PX));
+          el.setAttribute('height', String(Math.abs(py1 - py0)));
+        }
+        el.setAttribute('fill', fill);
+        shapes.push(el);
+      }
+    }
+    return shapes;
+  };
+
+  const earlyDefs = document.createElementNS(NS, 'defs');
+  svg.appendChild(earlyDefs);
+
+  // --- inset shadow: light from the top-left, so shadow gathers along each
+  // shape's bottom-right *inner* edge. Classic SVG inset-shadow recipe --
+  // invert+blur+offset the shape's own alpha, clip that back to the shape,
+  // then merge over the original so nothing spills past the wall.
+  const SHADOW_DX = 5, SHADOW_DY = 5, SHADOW_BLUR = 1;
+  const insetFilter = document.createElementNS(NS, 'filter');
+  insetFilter.setAttribute('id', 'inset-shadow');
+  insetFilter.setAttribute('x', '-25%');
+  insetFilter.setAttribute('y', '-25%');
+  insetFilter.setAttribute('width', '150%');
+  insetFilter.setAttribute('height', '150%');
+  insetFilter.innerHTML = `
+    <feComponentTransfer in="SourceAlpha" result="inverted">
+      <feFuncA type="table" tableValues="1 0"/>
+    </feComponentTransfer>
+    <feGaussianBlur in="inverted" stdDeviation="${SHADOW_BLUR}" result="blurred"/>
+    <feOffset in="blurred" dx="${SHADOW_DX}" dy="${SHADOW_DY}" result="offset"/>
+    <feFlood flood-color="var(--shadow-color)" flood-opacity="0.4" result="tint"/>
+    <feComposite in="tint" in2="offset" operator="in" result="tinted-edge"/>
+    <feComposite in="tinted-edge" in2="SourceAlpha" operator="in" result="clipped"/>
+    <feMerge>
+      <feMergeNode in="SourceGraphic"/>
+      <feMergeNode in="clipped"/>
+    </feMerge>
+  `;
+  earlyDefs.appendChild(insetFilter);
+
+  // --- exterior rubble halo: a stippled texture band just outside the
+  // walls. Built by dilating the floor silhouette and subtracting the
+  // original, leaving only the ring beyond the walls, then filling that
+  // ring with a tiled rubble pattern. NOTE: feMorphology (the dilate) is
+  // broadly supported but can be slow on very large maps -- shrink
+  // HALO_RADIUS or drop this layer entirely if regeneration feels sluggish.
+  const HALO_RADIUS = 9;
+  const haloFilter = document.createElementNS(NS, 'filter');
+  haloFilter.setAttribute('id', 'halo-dilate');
+  haloFilter.setAttribute('x', '-20%');
+  haloFilter.setAttribute('y', '-20%');
+  haloFilter.setAttribute('width', '140%');
+  haloFilter.setAttribute('height', '140%');
+  haloFilter.setAttribute('primitiveUnits', 'userSpaceOnUse');
+  const dilateOp = document.createElementNS(NS, 'feMorphology');
+  dilateOp.setAttribute('in', 'SourceGraphic');
+  dilateOp.setAttribute('operator', 'dilate');
+  dilateOp.setAttribute('radius', String(HALO_RADIUS));
+  dilateOp.setAttribute('result', 'dilated');
+  haloFilter.appendChild(dilateOp);
+  const subtractOp = document.createElementNS(NS, 'feComposite');
+  subtractOp.setAttribute('in', 'dilated');
+  subtractOp.setAttribute('in2', 'SourceGraphic');
+  subtractOp.setAttribute('operator', 'out');
+  haloFilter.appendChild(subtractOp);
+  earlyDefs.appendChild(haloFilter);
+
+  const rubblePattern = document.createElementNS(NS, 'pattern');
+  rubblePattern.setAttribute('id', 'rubble-pattern');
+  rubblePattern.setAttribute('width', '20');
+  rubblePattern.setAttribute('height', '14');
+  rubblePattern.setAttribute('patternUnits', 'userSpaceOnUse');
+  rubblePattern.setAttribute('patternTransform', 'rotate(9)');
+  rubblePattern.innerHTML =
+    '<rect width="22" height="14" class="rubble-bg"/>' +
+    '<path d="M-2,4 Q3.5,0 9,4 T20,4 T31,4" class="rubble-wave"/>' +
+    '<path d="M-2,10 Q3.5,6 9,10 T20,10 T31,10" class="rubble-wave"/>';
+  earlyDefs.appendChild(rubblePattern);
+
+  const haloMask = document.createElementNS(NS, 'mask');
+  haloMask.setAttribute('id', 'halo-mask');
+  haloMask.setAttribute('maskUnits', 'userSpaceOnUse');
+  haloMask.setAttribute('x', '0');
+  haloMask.setAttribute('y', '0');
+  haloMask.setAttribute('width', String(pxW));
+  haloMask.setAttribute('height', String(pxH));
+  const haloMaskGroup = document.createElementNS(NS, 'g');
+  haloMaskGroup.setAttribute('filter', 'url(#halo-dilate)');
+  buildFloorUnionShapes('white').forEach((el) => haloMaskGroup.appendChild(el));
+  haloMask.appendChild(haloMaskGroup);
+  earlyDefs.appendChild(haloMask);
+
+  const rubbleRect = document.createElementNS(NS, 'rect');
+  rubbleRect.setAttribute('x', '0');
+  rubbleRect.setAttribute('y', '0');
+  rubbleRect.setAttribute('width', String(pxW));
+  rubbleRect.setAttribute('height', String(pxH));
+  rubbleRect.setAttribute('fill', 'url(#rubble-pattern)');
+  rubbleRect.setAttribute('mask', 'url(#halo-mask)');
+  svg.appendChild(rubbleRect);
+
+  
+  // --- corridors first, so room walls sit visually on top of their mouths ---
+  // const CORRIDOR_PX = CORRIDOR_GRID_WIDTH * UNIT;
   const pathFromPoints = (points: [number, number][]): string =>
     points
       .map(([gx, gy], i) => {
@@ -92,6 +239,8 @@ export function renderDungeon(
         return `${i === 0 ? 'M' : 'L'}${px},${py}`;
       })
       .join(' ');
+
+  let corridorFilterCounter = 0;
 
   for (const c of corridors) {
     const d = pathFromPoints(c.points);
@@ -102,18 +251,44 @@ export function renderDungeon(
     border.setAttribute('stroke-width', String(CORRIDOR_PX + 6));
     svg.appendChild(border);
 
+    // per-corridor filter region: objectBoundingBox collapses to zero
+    // width or height on a perfectly straight leg (getBBox ignores stroke
+    // width), which some browsers render as an opaque fallback rect
+    // instead of silently skipping the effect. Computing the region
+    // manually in userSpaceOnUse sidesteps that entirely.
+    let minPx = Infinity, minPy = Infinity, maxPx = -Infinity, maxPy = -Infinity;
+    for (const [gx, gy] of c.points) {
+      const [ppx, ppy] = toPx(gx, gy);
+      minPx = Math.min(minPx, ppx); maxPx = Math.max(maxPx, ppx);
+      minPy = Math.min(minPy, ppy); maxPy = Math.max(maxPy, ppy);
+    }
+    const pad = CORRIDOR_PX + 20;
+    const filterId = `inset-shadow-corridor-${corridorFilterCounter++}`;
+    const corridorFilter = document.createElementNS(NS, 'filter');
+    corridorFilter.setAttribute('id', filterId);
+    corridorFilter.setAttribute('filterUnits', 'userSpaceOnUse');
+    corridorFilter.setAttribute('x', String(minPx - pad));
+    corridorFilter.setAttribute('y', String(minPy - pad));
+    corridorFilter.setAttribute('width', String(maxPx - minPx + pad * 2));
+    corridorFilter.setAttribute('height', String(maxPy - minPy + pad * 2));
+    corridorFilter.innerHTML = insetFilter.innerHTML; // reuse the same shadow recipe
+    earlyDefs.appendChild(corridorFilter);
+
     const floor = document.createElementNS(NS, 'path');
     floor.setAttribute('d', d);
     floor.setAttribute('class', 'corridor-floor');
     floor.setAttribute('stroke-width', String(CORRIDOR_PX));
+    floor.setAttribute('filter', 'url(#inset-shadow)');
+    floor.setAttribute('filter', `url(#${filterId})`);
     svg.appendChild(floor);
+
   }
 
   // --- room floor shapes ---
   for (const r of rooms) {
     const [px, py] = toPx(r.x, r.y);
     const w = r.w * UNIT, h = r.h * UNIT;
-    const shapeClass = 'room-rect' + (r.parentId === null ? ' root' : '');
+    const shapeClass = 'room-rect' + (r.parentId === null ? ' root' : '') + (r.accent ? ' accent' : '');
 
     if (r.shape === 'circle') {
       const cx = px + w / 2, cy = py + h / 2;
@@ -123,6 +298,7 @@ export function renderDungeon(
       circle.setAttribute('cy', String(cy));
       circle.setAttribute('r', String(R));
       circle.setAttribute('class', shapeClass);
+      circle.setAttribute('filter', 'url(#inset-shadow)');
       svg.appendChild(circle);
     } else if (r.shape === 'octagon') {
       const cx = px + w / 2, cy = py + h / 2;
@@ -130,6 +306,7 @@ export function renderDungeon(
       const poly = document.createElementNS(NS, 'polygon');
       poly.setAttribute('points', octagonVertices(cx, cy, R).map(([x, y]) => `${x},${y}`).join(' '));
       poly.setAttribute('class', shapeClass);
+      poly.setAttribute('filter', 'url(#inset-shadow)');
       svg.appendChild(poly);
     } else {
       const rect = document.createElementNS(NS, 'rect');
@@ -138,6 +315,7 @@ export function renderDungeon(
       rect.setAttribute('width', String(w));
       rect.setAttribute('height', String(h));
       rect.setAttribute('class', shapeClass);
+      rect.setAttribute('filter', 'url(#inset-shadow)');
       svg.appendChild(rect);
     }
   }
@@ -294,36 +472,62 @@ export function renderDungeon(
   }
 
   // --- door glyph: a gap punched in the wall + a short double-tick across the threshold ---
-  const drawDoor = (gx: number, gy: number, vertical: boolean) => {
-    const [px, py] = toPx(gx, gy);
+  const DOOR_INSET = 5; // px -- how far into the corridor the door glyph sits from the room wall
+
+  const drawDoor = (gx: number, gy: number, vertical: boolean, insetSign: number = 0) => {
+    const [wallPx, wallPy] = toPx(gx, gy);
+    const glyphPx = vertical ? wallPx + insetSign * DOOR_INSET : wallPx;
+    const glyphPy = vertical ? wallPy : wallPy + insetSign * DOOR_INSET;
 
     const gap = document.createElementNS(NS, 'rect');
     if (vertical) {
-      gap.setAttribute('x', String(px - 6));
-      gap.setAttribute('y', String(py));
-      gap.setAttribute('width', '12');
+      // travel is along x -- the erasure spans from the wall out to the
+      // glyph, so the mouth stays visually open even though the door
+      // marker itself is drawn further inside the corridor
+      const lo = Math.min(wallPx, glyphPx) - (insetSign === 0 ? 6 : 0);
+      const hi = Math.max(wallPx, glyphPx) + 6;
+      gap.setAttribute('x', String(lo));
+      gap.setAttribute('y', String(wallPy));
+      gap.setAttribute('width', String(hi - lo));
       gap.setAttribute('height', String(UNIT));
     } else {
-      gap.setAttribute('x', String(px));
-      gap.setAttribute('y', String(py - 6));
+      const lo = Math.min(wallPy, glyphPy) - (insetSign === 0 ? 6 : 0);
+      const hi = Math.max(wallPy, glyphPy) + 6;
+      gap.setAttribute('x', String(wallPx));
+      gap.setAttribute('y', String(lo));
       gap.setAttribute('width', String(UNIT));
-      gap.setAttribute('height', '12');
+      gap.setAttribute('height', String(hi - lo));
     }
     gap.setAttribute('class', 'door-gap');
     svg.appendChild(gap);
 
+    const frame = document.createElementNS(NS, 'rect');
+    if (vertical) {
+      frame.setAttribute('x', String(glyphPx - 6));
+      frame.setAttribute('y', String(glyphPy));
+      frame.setAttribute('width', '12');
+      frame.setAttribute('height', String(UNIT));
+   } else {
+      frame.setAttribute('x', String(glyphPx));
+     frame.setAttribute('y', String(glyphPy - 6));
+      frame.setAttribute('width', String(UNIT));
+      frame.setAttribute('height', '12');
+   }
+    frame.setAttribute('class', 'door-frame');
+    svg.appendChild(frame);
+
     const makeTick = (offset: number) => {
       const t = document.createElementNS(NS, 'line');
       if (vertical) {
-        t.setAttribute('x1', String(px - 5));
-        t.setAttribute('y1', String(py + UNIT / 2 + offset));
-        t.setAttribute('x2', String(px + 5));
-        t.setAttribute('y2', String(py + UNIT / 2 + offset));
+        t.setAttribute('x1', String(glyphPx - 5));
+        t.setAttribute('y1', String(glyphPy + UNIT / 2 + offset));
+        t.setAttribute('x2', String(glyphPx + 5));
+        t.setAttribute('y2', String(glyphPy + UNIT / 2 + offset));
       } else {
-        t.setAttribute('x1', String(px + UNIT / 2 + offset));
-        t.setAttribute('y1', String(py - 5));
-        t.setAttribute('x2', String(px + UNIT / 2 + offset));
-        t.setAttribute('y2', String(py + 5));
+        t.setAttribute('x1', String(glyphPx + UNIT / 2 + offset));
+        t.setAttribute('y1', String(glyphPy - 5));
+        t.setAttribute('x2', String(glyphPx + UNIT / 2 + offset));
+        t.setAttribute('y2', String(glyphPy + 5));
       }
       t.setAttribute('class', 'door-tick');
       svg.appendChild(t);
@@ -368,9 +572,9 @@ export function renderDungeon(
     const [x0, y0] = p0;
     const [x1, y1] = p1;
     if (y0 === y1) {
-      drawDoor(x0, y0 - 0.5, true);   // travel is E/W -- pierces a vertical wall
+      drawDoor(x0, y0 - 0.5, true, x1 > x0 ? 1 : -1);   // travel is E/W -- pierces a vertical wall
     } else {
-      drawDoor(x0 - 0.5, y0, false);  // travel is N/S -- pierces a horizontal wall
+      drawDoor(x0 - 0.5, y0, false, y1 > y0 ? 1 : -1);  // travel is N/S -- pierces a horizontal wall
     }
   };
 

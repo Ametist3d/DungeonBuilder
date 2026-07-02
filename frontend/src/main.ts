@@ -17,6 +17,8 @@ const statRooms = document.getElementById('statRooms') as HTMLSpanElement;
 const statTarget = document.getElementById('statTarget') as HTMLSpanElement;
 const statDepth = document.getElementById('statDepth') as HTMLSpanElement;
 const statSeed = document.getElementById('statSeed') as HTMLSpanElement;
+const accentPctRange = document.getElementById('accentPctRange') as HTMLInputElement;
+const accentPctVal = document.getElementById('accentPctVal') as HTMLSpanElement;
 const panZoom = setupPanZoom(canvasWrap, svg);
 
 const rectPctRange = document.getElementById('rectPctRange') as HTMLInputElement;
@@ -26,6 +28,7 @@ const rectPctVal = document.getElementById('rectPctVal') as HTMLSpanElement;
 const circlePctVal = document.getElementById('circlePctVal') as HTMLSpanElement;
 const octagonPctRange = document.getElementById('octagonPctRange') as HTMLInputElement;
 const octagonPctVal = document.getElementById('octagonPctVal') as HTMLSpanElement;
+accentPctRange.addEventListener('input', () => { accentPctVal.textContent = accentPctRange.value; });
 
 rectPctRange.addEventListener('input', () => { rectPctVal.textContent = rectPctRange.value; });
 circlePctRange.addEventListener('input', () => { circlePctVal.textContent = circlePctRange.value; });
@@ -51,6 +54,7 @@ async function runGenerate(): Promise<void> {
       rectPct: parseInt(rectPctRange.value, 10),
       circlePct: parseInt(circlePctRange.value, 10),
       octagonPct: parseInt(octagonPctRange.value, 10),
+      accentPct: parseInt(accentPctRange.value, 10),
     });
 
     renderDungeon(svg, result.rooms, result.corridors, result.entrance, result.exit);

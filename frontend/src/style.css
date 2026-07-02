@@ -10,6 +10,9 @@
   --room-stroke: #241c12;
   --root-stroke: #8a1f11;
   --corridor-fill: #f5efdf;
+  --accent-room-fill: #9c4f43;
+  --shadow-color: #241c12;
+  --halo-bg: #c9bfa8;
 }
 * { box-sizing: border-box; }
 html, body { height: 100%; }
@@ -54,8 +57,10 @@ svg { width: 100%; height: 100%; display: block; }
 .grid line { stroke: var(--border); stroke-width: 0.5; opacity: 0.35; }
 .room-rect { fill: var(--room-fill); stroke: var(--room-stroke); stroke-width: 3; }
 .room-rect.root { stroke: var(--root-stroke); stroke-width: 3.5; }
+.room-rect.accent { fill: var(--accent-room-fill); }
 .corridor-rect { fill: var(--corridor-fill); stroke: var(--room-stroke); stroke-width: 3; }
 .door-gap { fill: var(--room-fill); }
+.door-frame { fill: none; stroke: var(--ink); stroke-width: 2; opacity: 0.6; }
 .door-tick { stroke: var(--ink); stroke-width: 0; }
 text.room-label { fill: var(--text-dim); }
 .room-number circle { fill: var(--room-fill); stroke: var(--ink); stroke-width: 1.5; }
@@ -73,4 +78,5 @@ text.room-label { fill: var(--text-dim); }
 .floor-grid line { stroke: var(--room-stroke); stroke-width: 0.6; stroke-dasharray: 2 3; opacity: 0.35; }
 .opening-arrow { fill: var(--ink); }
 .opening-label { fill: var(--ink); font-size: 10px; font-family: monospace; font-weight: 700; }
-
+.rubble-bg { fill: var(--halo-bg); }
+.rubble-wave { stroke: var(--room-stroke); stroke-width: 1; fill: none; opacity: 0.5; }

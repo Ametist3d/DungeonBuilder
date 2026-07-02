@@ -71,6 +71,7 @@ class RoomNode:
     parent_id: Optional[int]
     depth: int
     shape: str = "rect"
+    accent: bool = False
     children: list[int] = field(default_factory=list)
 
 
@@ -416,8 +417,10 @@ def _try_spawn_child(
     rng: random.Random,
     next_id: int,
     shape_weights: tuple[float, float, float],
+    accent_pct: int,
 ) -> Optional[tuple[RoomNode, list[tuple[int, int]]]]:
     shape = _pick_shape(rng, shape_weights)
+    accent = rng.random() < accent_pct / 100
     w, h = _pick_dims(rng, shape)
     others = [r for r in rooms if r.id != parent.id]
 
@@ -430,13 +433,14 @@ def _try_spawn_child(
             candidate = RoomNode(
                 id=next_id, x=cx, y=cy, w=w, h=h,
                 entrance_dir=OPPOSITE[direction], parent_id=parent.id, depth=parent.depth + 1,
-                shape=shape,
+                shape=shape, accent=accent,
             )
             if _placement_clear(candidate, points, others, corridor_segs):
                 return candidate, points
 
     for _ in range(PLACEMENT_RETRIES):
         candidate = _place_flush(parent, direction, w, h, rng, next_id, shape)
+        candidate.accent = accent
         if _placement_clear(candidate, [], others, corridor_segs):
             return candidate, []
 
@@ -444,7 +448,7 @@ def _try_spawn_child(
 
 def generate_dungeon(
     seed: str, target_count: int, symmetry_break_pct: int,
-    shape_weights: tuple[float, float, float] = (100.0, 0.0, 0.0),
+    shape_weights: tuple[float, float, float] = (100.0, 0.0, 0.0), accent_pct: int = 15,
 ) -> tuple[list[RoomNode], list[Corridor], Opening, Opening]:
     rng = make_rng(seed)
     next_id = 0
@@ -459,7 +463,7 @@ def generate_dungeon(
         x=0, y=0,
         w=root_w, h=root_h,
         entrance_dir=None, parent_id=None, depth=0,
-        shape=root_shape,
+        shape=root_shape, accent=rng.random() < accent_pct / 100,
     )
     next_id += 1
 
@@ -504,7 +508,7 @@ def generate_dungeon(
         for direction in kept:
             if len(rooms) >= target_count:
                 break
-            spawned = _try_spawn_child(parent, direction, rooms, corridor_segs, rng, next_id, shape_weights)
+            spawned = _try_spawn_child(parent, direction, rooms, corridor_segs, rng, next_id, shape_weights, accent_pct)
             if spawned:
                 child, points = spawned
                 next_id += 1
@@ -520,7 +524,7 @@ def generate_dungeon(
             for direction in sides + [forward_dir]:
                 if direction in kept or len(rooms) >= target_count:
                     continue
-                spawned = _try_spawn_child(parent, direction, rooms, corridor_segs, rng, next_id, shape_weights)
+                spawned = _try_spawn_child(parent, direction, rooms, corridor_segs, rng, next_id, shape_weights, accent_pct)
                 if spawned:
                     child, points = spawned
                     next_id += 1
@@ -533,7 +537,7 @@ def generate_dungeon(
                     break
 
     _add_loop_corridors(rooms, corridor_segs, corridors, rng)
-    
+
     used = _used_directions(rooms, corridors)
     root_room = rooms[0]
     last_room = max(rooms, key=lambda r: r.id)

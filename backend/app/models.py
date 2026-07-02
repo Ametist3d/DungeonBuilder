@@ -18,6 +18,7 @@ class Room(BaseModel):
     entrance_dir: Optional[Direction] = Field(None, alias="entranceDir")
     depth: int
     shape: Shape = "rect"
+    accent: bool = False
 
 class Opening(BaseModel):
     """A wall opening to the outside world -- the dungeon's entrance or exit."""
@@ -36,6 +37,7 @@ class GenerateRequest(BaseModel):
     rect_pct: int = Field(60, ge=0, le=100, alias="rectPct")
     circle_pct: int = Field(20, ge=0, le=100, alias="circlePct")
     octagon_pct: int = Field(20, ge=0, le=100, alias="octagonPct")
+    accent_pct: int = Field(15, ge=0, le=100, alias="accentPct")
 
 
 class Corridor(BaseModel):
