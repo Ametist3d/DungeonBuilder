@@ -44,6 +44,8 @@ button:hover { filter: brightness(1.1); }
 #stage { flex: 1; display: flex; min-height: 0; }
 #canvas-wrap { flex: 1; position: relative; }
 svg { width: 100%; height: 100%; display: block; }
+#canvas-wrap { overflow: hidden; }
+#canvas { touch-action: none; }
 #sidebar { width: 220px; border-left: 1px solid var(--border); background: var(--panel); padding: 16px; font-size: 13px; }
 #sidebar h2 { font-size: 12px; text-transform: uppercase; color: var(--text-dim); margin: 0 0 8px; }
 .stat { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid var(--border); }
@@ -54,7 +56,7 @@ svg { width: 100%; height: 100%; display: block; }
 .room-rect.root { stroke: var(--root-stroke); stroke-width: 3.5; }
 .corridor-rect { fill: var(--corridor-fill); stroke: var(--room-stroke); stroke-width: 3; }
 .door-gap { fill: var(--room-fill); }
-.door-tick { stroke: var(--ink); stroke-width: 2; }
+.door-tick { stroke: var(--ink); stroke-width: 0; }
 text.room-label { fill: var(--text-dim); }
 .room-number circle { fill: var(--room-fill); stroke: var(--ink); stroke-width: 1.5; }
 .room-number text { fill: var(--ink); font-family: 'SF Mono', Consolas, monospace; font-size: 11px; font-weight: 700; }
@@ -68,3 +70,7 @@ text.room-label { fill: var(--text-dim); }
 .corridor-hatch { stroke: var(--room-stroke); stroke-width: 1; opacity: 0.7; }
 .corridor-border { fill: none; stroke: var(--room-stroke); stroke-linejoin: miter; stroke-linecap: butt; }
 .corridor-floor { fill: none; stroke: var(--room-fill); stroke-linejoin: miter; stroke-linecap: butt; }
+.floor-grid line { stroke: var(--room-stroke); stroke-width: 0.6; stroke-dasharray: 2 3; opacity: 0.35; }
+.opening-arrow { fill: var(--ink); }
+.opening-label { fill: var(--ink); font-size: 10px; font-family: monospace; font-weight: 700; }
+

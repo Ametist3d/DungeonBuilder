@@ -1,4 +1,4 @@
-import type { Room, Corridor } from './types';
+import type { Room, Corridor, Opening } from './types';
 
 const NS = 'http://www.w3.org/2000/svg';
 const OPPOSITE: Record<string, string> = { N: 'S', S: 'N', E: 'W', W: 'E' };
@@ -6,6 +6,17 @@ const UNIT = 28;
 const CORRIDOR_GRID_WIDTH = 1;
 const HATCH_LEN = 5;
 const HATCH_GAP = 7;
+
+const DIR_VECTOR: Record<string, [number, number]> = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0] };
+
+const wallCenter = (r: Room, dir: string): [number, number] => {
+  switch (dir) {
+    case 'N': return [r.x + r.w / 2, r.y];
+    case 'S': return [r.x + r.w / 2, r.y + r.h];
+    case 'E': return [r.x + r.w, r.y + r.h / 2];
+    default: return [r.x, r.y + r.h / 2]; // W
+  }
+};
 
 // Chamfered-square octagon: flat edges land exactly on the bounding box at
 // all four cardinal points (tan(22.5°) = √2 − 1), so corridor attachment
@@ -20,7 +31,13 @@ const octagonVertices = (cx: number, cy: number, R: number): [number, number][] 
   ];
 };
 
-export function renderDungeon(svg: SVGSVGElement, rooms: Room[], corridors: Corridor[] = []): void {
+export function renderDungeon(
+  svg: SVGSVGElement,
+  rooms: Room[],
+  corridors: Corridor[] = [],
+  entrance: Opening | null = null,
+  dungeonExit: Opening | null = null,
+): void {
   svg.innerHTML = '';
   if (rooms.length === 0) return;
 
@@ -39,6 +56,21 @@ export function renderDungeon(svg: SVGSVGElement, rooms: Room[], corridors: Corr
       maxY = Math.max(maxY, py);
     }
   }
+
+  for (const opening of [entrance, dungeonExit]) {
+    if (!opening) continue;
+    const room = rooms.find((r) => r.id === opening.roomId);
+    if (!room) continue;
+    const [wx, wy] = wallCenter(room, opening.direction);
+    const [nx, ny] = DIR_VECTOR[opening.direction];
+    // const tx = wx + nx * OPENING_STUB_LEN, ty = wy + ny * OPENING_STUB_LEN;
+    const tx = wx + nx * 2, ty = wy + ny * 2; // small margin for the arrow + label
+    minX = Math.min(minX, wx, tx);
+    minY = Math.min(minY, wy, ty);
+    maxX = Math.max(maxX, wx, tx);
+    maxY = Math.max(maxY, wy, ty);
+  }
+
   const pad = 2;
   minX -= pad; minY -= pad; maxX += pad; maxY += pad;
   const pxW = (maxX - minX) * UNIT;
@@ -77,7 +109,7 @@ export function renderDungeon(svg: SVGSVGElement, rooms: Room[], corridors: Corr
     svg.appendChild(floor);
   }
 
-  // --- rooms + numbered key badges ---
+  // --- room floor shapes ---
   for (const r of rooms) {
     const [px, py] = toPx(r.x, r.y);
     const w = r.w * UNIT, h = r.h * UNIT;
@@ -108,19 +140,97 @@ export function renderDungeon(svg: SVGSVGElement, rooms: Room[], corridors: Corr
       rect.setAttribute('class', shapeClass);
       svg.appendChild(rect);
     }
+  }
 
-    const bx = px + 12;
-    const by = py + 12;
+  // --- floor grid: dashed reference grid, same UNIT scale as everything else,
+  // clipped to only show where there's actual floor (rooms + corridors) ---
+  const defs = document.createElementNS(NS, 'defs');
+  const clip = document.createElementNS(NS, 'clipPath');
+  clip.setAttribute('id', 'floor-clip');
+
+  for (const r of rooms) {
+    const [px, py] = toPx(r.x, r.y);
+    const w = r.w * UNIT, h = r.h * UNIT;
+    if (r.shape === 'circle') {
+      const el = document.createElementNS(NS, 'circle');
+      el.setAttribute('cx', String(px + w / 2));
+      el.setAttribute('cy', String(py + h / 2));
+      el.setAttribute('r', String(Math.min(w, h) / 2));
+      clip.appendChild(el);
+    } else if (r.shape === 'octagon') {
+      const el = document.createElementNS(NS, 'polygon');
+      el.setAttribute('points', octagonVertices(px + w / 2, py + h / 2, Math.min(w, h) / 2).map(([x, y]) => `${x},${y}`).join(' '));
+      clip.appendChild(el);
+    } else {
+      const el = document.createElementNS(NS, 'rect');
+      el.setAttribute('x', String(px));
+      el.setAttribute('y', String(py));
+      el.setAttribute('width', String(w));
+      el.setAttribute('height', String(h));
+      clip.appendChild(el);
+    }
+  }
+  const CORRIDOR_PX_CLIP = CORRIDOR_GRID_WIDTH * UNIT;
+  for (const c of corridors) {
+    for (let i = 0; i < c.points.length - 1; i++) {
+      const [gx0, gy0] = c.points[i];
+      const [gx1, gy1] = c.points[i + 1];
+      const [px0, py0] = toPx(gx0, gy0);
+      const [px1, py1] = toPx(gx1, gy1);
+      const el = document.createElementNS(NS, 'rect');
+      if (gy0 === gy1) {
+        el.setAttribute('x', String(Math.min(px0, px1)));
+        el.setAttribute('y', String(py0 - CORRIDOR_PX_CLIP / 2));
+        el.setAttribute('width', String(Math.abs(px1 - px0)));
+        el.setAttribute('height', String(CORRIDOR_PX_CLIP));
+      } else {
+        el.setAttribute('x', String(px0 - CORRIDOR_PX_CLIP / 2));
+        el.setAttribute('y', String(Math.min(py0, py1)));
+        el.setAttribute('width', String(CORRIDOR_PX_CLIP));
+        el.setAttribute('height', String(Math.abs(py1 - py0)));
+      }
+      clip.appendChild(el);
+    }
+  }
+  defs.appendChild(clip);
+  svg.appendChild(defs);
+
+  const floorGrid = document.createElementNS(NS, 'g');
+  floorGrid.setAttribute('class', 'floor-grid');
+  floorGrid.setAttribute('clip-path', 'url(#floor-clip)');
+  for (let gx = 0; gx <= pxW; gx += UNIT) {
+    const line = document.createElementNS(NS, 'line');
+    line.setAttribute('x1', String(gx));
+    line.setAttribute('y1', '0');
+    line.setAttribute('x2', String(gx));
+    line.setAttribute('y2', String(pxH));
+    floorGrid.appendChild(line);
+  }
+  for (let gy = 0; gy <= pxH; gy += UNIT) {
+    const line = document.createElementNS(NS, 'line');
+    line.setAttribute('x1', '0');
+    line.setAttribute('y1', String(gy));
+    line.setAttribute('x2', String(pxW));
+    line.setAttribute('y2', String(gy));
+    floorGrid.appendChild(line);
+  }
+  svg.appendChild(floorGrid);
+
+  // --- room number badges, centered ---
+  for (const r of rooms) {
+    const [px, py] = toPx(r.x, r.y);
+    const w = r.w * UNIT, h = r.h * UNIT;
+    const cx = px + w / 2, cy = py + h / 2;
     const numGroup = document.createElementNS(NS, 'g');
     numGroup.setAttribute('class', 'room-number');
     const badge = document.createElementNS(NS, 'circle');
-    badge.setAttribute('cx', String(bx));
-    badge.setAttribute('cy', String(by));
+    badge.setAttribute('cx', String(cx));
+    badge.setAttribute('cy', String(cy));
     badge.setAttribute('r', '9');
     numGroup.appendChild(badge);
     const label = document.createElementNS(NS, 'text');
-    label.setAttribute('x', String(bx));
-    label.setAttribute('y', String(by + 4));
+    label.setAttribute('x', String(cx));
+    label.setAttribute('y', String(cy + 4));
     label.setAttribute('text-anchor', 'middle');
     label.textContent = String(r.id);
     numGroup.appendChild(label);
@@ -161,8 +271,8 @@ export function renderDungeon(svg: SVGSVGElement, rooms: Room[], corridors: Corr
         const tick = document.createElementNS(NS, 'line');
         tick.setAttribute('x1', String(sx));
         tick.setAttribute('y1', String(sy));
-        tick.setAttribute('x2', String(sx + HATCH_LEN * Math.cos(a)));
-        tick.setAttribute('y2', String(sy + HATCH_LEN * Math.sin(a)));
+        tick.setAttribute('x2', String(sx - HATCH_LEN * Math.cos(a)));
+        tick.setAttribute('y2', String(sy - HATCH_LEN * Math.sin(a)));
         tick.setAttribute('class', 'hatch-tick');
         svg.appendChild(tick);
       }
@@ -287,4 +397,58 @@ export function renderDungeon(svg: SVGSVGElement, rooms: Room[], corridors: Corr
       drawDoor((lo + hi) / 2 - 0.5, dir === 'S' ? parent.y + parent.h : parent.y, false);
     }
   }
+
+  // --- entrance / exit openings ---
+  const OPENING_GAP = 4;         // px between the wall and the near edge of the arrow glyph
+  const OPENING_ARROW_LEN = 11;  // px, tip-to-base length of the triangle
+  const OPENING_ARROW_WIDTH = 7; // px, half-width of the triangle's base
+  const OPENING_LABEL_GAP = 7;   // px between the glyph's outer edge and the label
+
+  const drawOpening = (room: Room, dir: string, label: string, arrowInward: boolean) => {
+    const vertical = dir === 'E' || dir === 'W';
+    const [wx, wy] = wallCenter(room, dir);
+    if (vertical) {
+      drawDoor(wx, wy - 0.5, true);
+    } else {
+      drawDoor(wx - 0.5, wy, false);
+    }
+
+    const [dirX, dirY] = DIR_VECTOR[dir]; // unit vector pointing outward, away from the room
+    const [px0, py0] = toPx(wx, wy);
+
+    // near/far ends of the glyph, both measured outward from the wall --
+    // which end is the tip vs. the base depends on which way it should point
+    const nearX = px0 + dirX * OPENING_GAP, nearY = py0 + dirY * OPENING_GAP;
+    const farX = px0 + dirX * (OPENING_GAP + OPENING_ARROW_LEN);
+    const farY = py0 + dirY * (OPENING_GAP + OPENING_ARROW_LEN);
+
+    const [tipX, tipY] = arrowInward ? [nearX, nearY] : [farX, farY];
+    const [baseX, baseY] = arrowInward ? [farX, farY] : [nearX, nearY];
+
+    const leftX = baseX - dirY * OPENING_ARROW_WIDTH, leftY = baseY + dirX * OPENING_ARROW_WIDTH;
+    const rightX = baseX + dirY * OPENING_ARROW_WIDTH, rightY = baseY - dirX * OPENING_ARROW_WIDTH;
+    const arrow = document.createElementNS(NS, 'polygon');
+    arrow.setAttribute('points', `${tipX},${tipY} ${leftX},${leftY} ${rightX},${rightY}`);
+    arrow.setAttribute('class', 'opening-arrow');
+    svg.appendChild(arrow);
+
+    const text = document.createElementNS(NS, 'text');
+    text.setAttribute('x', String(farX + dirX * OPENING_LABEL_GAP));
+    text.setAttribute('y', String(farY + dirY * OPENING_LABEL_GAP + 4));
+    text.setAttribute('text-anchor', vertical ? 'start' : 'middle');
+    if (vertical && dirX < 0) text.setAttribute('text-anchor', 'end');
+    text.setAttribute('class', 'opening-label');
+    text.textContent = label;
+    svg.appendChild(text);
+  };
+
+  if (entrance) {
+    const room = byId.get(entrance.roomId);
+    if (room) drawOpening(room, entrance.direction, 'IN', true);
+  }
+  if (dungeonExit) {
+    const room = byId.get(dungeonExit.roomId);
+    if (room) drawOpening(room, dungeonExit.direction, 'OUT', false);
+  }
+
 }

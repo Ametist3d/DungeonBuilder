@@ -2,8 +2,10 @@ import './style.css';
 import { generateDungeon } from './api';
 import { renderDungeon } from './render';
 import type { Size } from './types';
+import { setupPanZoom } from './pan-zoom'
 
 const svg = document.getElementById('canvas') as unknown as SVGSVGElement;
+const canvasWrap = document.getElementById('canvas-wrap') as HTMLDivElement;
 const seedInput = document.getElementById('seedInput') as HTMLInputElement;
 const sizeSelect = document.getElementById('sizeSelect') as HTMLSelectElement;
 const breakRange = document.getElementById('breakRange') as HTMLInputElement;
@@ -15,6 +17,7 @@ const statRooms = document.getElementById('statRooms') as HTMLSpanElement;
 const statTarget = document.getElementById('statTarget') as HTMLSpanElement;
 const statDepth = document.getElementById('statDepth') as HTMLSpanElement;
 const statSeed = document.getElementById('statSeed') as HTMLSpanElement;
+const panZoom = setupPanZoom(canvasWrap, svg);
 
 const rectPctRange = document.getElementById('rectPctRange') as HTMLInputElement;
 const circlePctRange = document.getElementById('circlePctRange') as HTMLInputElement;
@@ -50,7 +53,8 @@ async function runGenerate(): Promise<void> {
       octagonPct: parseInt(octagonPctRange.value, 10),
     });
 
-    renderDungeon(svg, result.rooms, result.corridors);
+    renderDungeon(svg, result.rooms, result.corridors, result.entrance, result.exit);
+    panZoom.reset();
     statRooms.textContent = String(result.rooms.length);
     statTarget.textContent = String(result.target);
     statDepth.textContent = String(result.maxDepth);

@@ -19,6 +19,13 @@ class Room(BaseModel):
     depth: int
     shape: Shape = "rect"
 
+class Opening(BaseModel):
+    """A wall opening to the outside world -- the dungeon's entrance or exit."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    room_id: int = Field(alias="roomId")
+    direction: Direction
 
 class GenerateRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
@@ -49,4 +56,6 @@ class GenerateResponse(BaseModel):
     max_depth: int = Field(alias="maxDepth")
     rooms: list[Room]
     corridors: list[Corridor]
+    entrance: Opening
+    exit: Opening
 

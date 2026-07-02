@@ -4,7 +4,7 @@ from fastapi import APIRouter
 
 from ..generator.rng import make_rng
 from ..generator.rooms import SIZE_TARGETS, generate_dungeon
-from ..models import Corridor, GenerateRequest, GenerateResponse, Room
+from ..models import Corridor, GenerateRequest, GenerateResponse, Opening, Room
 
 router = APIRouter(prefix="/api/dungeon", tags=["dungeon"])
 
@@ -17,7 +17,7 @@ def generate(req: GenerateRequest) -> GenerateResponse:
     count_rng = make_rng(seed + "#count")
     target = count_rng.randint(lo, hi)
 
-    rooms, corridors = generate_dungeon(
+    rooms, corridors, entrance, exit_opening  = generate_dungeon(
         seed, target, req.symmetry_break,
         shape_weights=(req.rect_pct, req.circle_pct, req.octagon_pct),
     )
@@ -39,4 +39,6 @@ def generate(req: GenerateRequest) -> GenerateResponse:
             Corridor(parent_id=c.parent_id, child_id=c.child_id, points=[list(p) for p in c.points])
             for c in corridors
         ],
+        entrance=Opening(room_id=entrance.room_id, direction=entrance.direction),
+        exit=Opening(room_id=exit_opening.room_id, direction=exit_opening.direction),
     )

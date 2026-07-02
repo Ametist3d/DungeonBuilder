@@ -29,10 +29,17 @@ export interface Corridor {
   points: [number, number][];
 }
 
+export interface Opening {
+  roomId: number;
+  direction: Direction;
+}
+
 export interface GenerateResponse {
   seed: string;
   target: number;
   maxDepth: number;
   rooms: Room[];
   corridors: Corridor[];
+  entrance: Opening;
+  exit: Opening;
 }
