@@ -43,7 +43,7 @@ API docs at http://localhost:8000/docs once it's running.
 npm install
 npm run dev
 ```
-Open http://localhost:5173 — the Vite dev server proxies `/api/*` to the
+Open http://localhost:5175 — the Vite dev server proxies `/api/*` to the
 backend on port 8000 (see `vite.config.ts`), so both need to be running.
 
 `npm run typecheck` runs strict TypeScript checking without building.

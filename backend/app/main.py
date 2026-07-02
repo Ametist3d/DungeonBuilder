@@ -8,7 +8,7 @@ app = FastAPI(title="Dungeon Generator API", version="0.1.0")
 # Vite dev server origin. Loosen/replace this once there's a real deployment target.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=["http://localhost:5175", "http://127.0.0.1:5175"],
     allow_methods=["*"],
     allow_headers=["*"],
 )

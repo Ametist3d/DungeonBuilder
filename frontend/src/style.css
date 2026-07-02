@@ -11,7 +11,7 @@
   --root-stroke: #8a1f11;
   --corridor-fill: #f5efdf;
   --accent-room-fill: #9c4f43;
-  --shadow-color: #241c12;
+  --shadow-color: #68431d;
   --halo-bg: #c9bfa8;
 }
 * { box-sizing: border-box; }
@@ -79,4 +79,5 @@ text.room-label { fill: var(--text-dim); }
 .opening-arrow { fill: var(--ink); }
 .opening-label { fill: var(--ink); font-size: 10px; font-family: monospace; font-weight: 700; }
 .rubble-bg { fill: var(--halo-bg); }
-.rubble-wave { stroke: var(--room-stroke); stroke-width: 1; fill: none; opacity: 0.5; }
+.rubble-hatch { stroke: var(--room-stroke); stroke-width: 1; opacity: 0.55; }
+.rubble-hatch-light { opacity: 0.3; }

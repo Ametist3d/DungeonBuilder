@@ -91,6 +91,12 @@ export function renderDungeon(
   // shared across two parents), so this is called once per use.
   const buildFloorUnionShapes = (fill: string): SVGElement[] => {
     const shapes: SVGElement[] = [];
+    const pathD = (points: [number, number][]): string =>
+      points.map(([gx, gy], i) => {
+        const [ppx, ppy] = toPx(gx, gy);
+        return `${i === 0 ? 'M' : 'L'}${ppx},${ppy}`;
+      }).join(' ');
+    
     for (const r of rooms) {
       const [px, py] = toPx(r.x, r.y);
       const w = r.w * UNIT, h = r.h * UNIT;
@@ -114,26 +120,17 @@ export function renderDungeon(
       shapes.push(el);
     }
     for (const c of corridors) {
-      for (let i = 0; i < c.points.length - 1; i++) {
-        const [gx0, gy0] = c.points[i];
-        const [gx1, gy1] = c.points[i + 1];
-        const [px0, py0] = toPx(gx0, gy0);
-        const [px1, py1] = toPx(gx1, gy1);
-        const el = document.createElementNS(NS, 'rect');
-        if (gy0 === gy1) {
-          el.setAttribute('x', String(Math.min(px0, px1)));
-          el.setAttribute('y', String(py0 - CORRIDOR_PX / 2));
-          el.setAttribute('width', String(Math.abs(px1 - px0)));
-          el.setAttribute('height', String(CORRIDOR_PX));
-        } else {
-          el.setAttribute('x', String(px0 - CORRIDOR_PX / 2));
-          el.setAttribute('y', String(Math.min(py0, py1)));
-          el.setAttribute('width', String(CORRIDOR_PX));
-          el.setAttribute('height', String(Math.abs(py1 - py0)));
-        }
-        el.setAttribute('fill', fill);
-        shapes.push(el);
-      }
+      // one continuous stroked path per corridor -- exactly matches the
+      // visible outline (corridor-border uses the same +6 width), so the
+      // halo mask never has a seam at a turn like separate leg-rects did
+      const el = document.createElementNS(NS, 'path');
+      el.setAttribute('d', pathD(c.points));
+      el.setAttribute('fill', 'none');
+      el.setAttribute('stroke', fill);
+      el.setAttribute('stroke-width', String(CORRIDOR_PX + 6));
+      el.setAttribute('stroke-linejoin', 'miter');
+      el.setAttribute('stroke-linecap', 'butt');
+      shapes.push(el);
     }
     return shapes;
   };
@@ -145,7 +142,8 @@ export function renderDungeon(
   // shape's bottom-right *inner* edge. Classic SVG inset-shadow recipe --
   // invert+blur+offset the shape's own alpha, clip that back to the shape,
   // then merge over the original so nothing spills past the wall.
-  const SHADOW_DX = 5, SHADOW_DY = 5, SHADOW_BLUR = 1;
+  const SHADOW_DX = 8, SHADOW_DY = 8, SHADOW_BLUR = 1;
+  const SHADOW_DX_CORRIDOR = 5, SHADOW_DY_CORRIDOR = 5, SHADOW_BLUR_CORRIDOR = 1;
   const insetFilter = document.createElementNS(NS, 'filter');
   insetFilter.setAttribute('id', 'inset-shadow');
   insetFilter.setAttribute('x', '-25%');
@@ -158,7 +156,7 @@ export function renderDungeon(
     </feComponentTransfer>
     <feGaussianBlur in="inverted" stdDeviation="${SHADOW_BLUR}" result="blurred"/>
     <feOffset in="blurred" dx="${SHADOW_DX}" dy="${SHADOW_DY}" result="offset"/>
-    <feFlood flood-color="var(--shadow-color)" flood-opacity="0.4" result="tint"/>
+    <feFlood flood-color="var(--shadow-color)" flood-opacity="0.6" result="tint"/>
     <feComposite in="tint" in2="offset" operator="in" result="tinted-edge"/>
     <feComposite in="tinted-edge" in2="SourceAlpha" operator="in" result="clipped"/>
     <feMerge>
@@ -175,12 +173,13 @@ export function renderDungeon(
   // broadly supported but can be slow on very large maps -- shrink
   // HALO_RADIUS or drop this layer entirely if regeneration feels sluggish.
   const HALO_RADIUS = 9;
+  const HALO_BLUR = 5;
   const haloFilter = document.createElementNS(NS, 'filter');
   haloFilter.setAttribute('id', 'halo-dilate');
-  haloFilter.setAttribute('x', '-20%');
-  haloFilter.setAttribute('y', '-20%');
-  haloFilter.setAttribute('width', '140%');
-  haloFilter.setAttribute('height', '140%');
+  haloFilter.setAttribute('x', '-50%');
+  haloFilter.setAttribute('y', '-50%');
+  haloFilter.setAttribute('width', '200%');
+  haloFilter.setAttribute('height', '200%');
   haloFilter.setAttribute('primitiveUnits', 'userSpaceOnUse');
   const dilateOp = document.createElementNS(NS, 'feMorphology');
   dilateOp.setAttribute('in', 'SourceGraphic');
@@ -192,21 +191,36 @@ export function renderDungeon(
   subtractOp.setAttribute('in', 'dilated');
   subtractOp.setAttribute('in2', 'SourceGraphic');
   subtractOp.setAttribute('operator', 'out');
+  subtractOp.setAttribute('result', 'ring');
   haloFilter.appendChild(subtractOp);
+  const ringBlurOp = document.createElementNS(NS, 'feGaussianBlur');
+  ringBlurOp.setAttribute('in', 'ring');
+  ringBlurOp.setAttribute('stdDeviation', String(HALO_BLUR));
+  haloFilter.appendChild(ringBlurOp)  
   earlyDefs.appendChild(haloFilter);
 
   const rubblePattern = document.createElementNS(NS, 'pattern');
   rubblePattern.setAttribute('id', 'rubble-pattern');
-  rubblePattern.setAttribute('width', '20');
-  rubblePattern.setAttribute('height', '14');
+  rubblePattern.setAttribute('width', '8');
+  rubblePattern.setAttribute('height', '8');
   rubblePattern.setAttribute('patternUnits', 'userSpaceOnUse');
-  rubblePattern.setAttribute('patternTransform', 'rotate(9)');
+  rubblePattern.setAttribute('patternTransform', 'rotate(45)');
   rubblePattern.innerHTML =
-    '<rect width="22" height="14" class="rubble-bg"/>' +
-    '<path d="M-2,4 Q3.5,0 9,4 T20,4 T31,4" class="rubble-wave"/>' +
-    '<path d="M-2,10 Q3.5,6 9,10 T20,10 T31,10" class="rubble-wave"/>';
+    '<line x1="0" y1="0" x2="8" y2="0" class="rubble-hatch"/>' +
+    '<line x1="0" y1="4" x2="8" y2="4" class="rubble-hatch rubble-hatch-light"/>';
   earlyDefs.appendChild(rubblePattern);
 
+  const ACCENT_BLUR = 0.1; // px -- softness of the exterior rubble texture; 0 = crisp lines
+  const accentBlurFilter = document.createElementNS(NS, 'filter');
+  accentBlurFilter.setAttribute('id', 'accent-blur');
+  accentBlurFilter.setAttribute('x', '-20%');
+  accentBlurFilter.setAttribute('y', '-20%');
+  accentBlurFilter.setAttribute('width', '140%');
+  accentBlurFilter.setAttribute('height', '140%');
+  accentBlurFilter.innerHTML = `<feGaussianBlur stdDeviation="${ACCENT_BLUR}"/>`;
+  earlyDefs.appendChild(accentBlurFilter);
+
+ 
   const haloMask = document.createElementNS(NS, 'mask');
   haloMask.setAttribute('id', 'halo-mask');
   haloMask.setAttribute('maskUnits', 'userSpaceOnUse');
@@ -218,7 +232,43 @@ export function renderDungeon(
   haloMaskGroup.setAttribute('filter', 'url(#halo-dilate)');
   buildFloorUnionShapes('white').forEach((el) => haloMaskGroup.appendChild(el));
   haloMask.appendChild(haloMaskGroup);
+
+  // leave the halo clear at entrance/exit -- the rubble texture would
+  // otherwise run straight across the arrow glyph drawn there later
+  for (const opening of [entrance, dungeonExit]) {
+    if (!opening) continue;
+    const room = rooms.find((r) => r.id === opening.roomId);
+    if (!room) continue;
+    const [wx, wy] = wallCenter(room, opening.direction);
+    const [nx, ny] = DIR_VECTOR[opening.direction];
+    const [px0, py0] = toPx(wx, wy);
+    const holeLen = HALO_RADIUS * 2 + 24;
+    const holeWidth = UNIT * 0.9;
+    const hole = document.createElementNS(NS, 'rect');
+    if (nx !== 0) {
+      hole.setAttribute('x', String(nx > 0 ? px0 : px0 - holeLen));
+      hole.setAttribute('y', String(py0 - holeWidth / 2));
+      hole.setAttribute('width', String(holeLen));
+      hole.setAttribute('height', String(holeWidth));
+    } else {
+      hole.setAttribute('x', String(px0 - holeWidth / 2));
+      hole.setAttribute('y', String(ny > 0 ? py0 : py0 - holeLen));
+      hole.setAttribute('width', String(holeWidth));
+      hole.setAttribute('height', String(holeLen));
+    }
+    hole.setAttribute('fill', 'black'); // black in a luminance mask = hidden
+    haloMask.appendChild(hole);
+  }
   earlyDefs.appendChild(haloMask);
+
+  const haloBacking = document.createElementNS(NS, 'rect');
+  haloBacking.setAttribute('x', '0');
+  haloBacking.setAttribute('y', '0');
+  haloBacking.setAttribute('width', String(pxW));
+  haloBacking.setAttribute('height', String(pxH));
+  haloBacking.setAttribute('fill', 'var(--halo-bg)');
+  haloBacking.setAttribute('mask', 'url(#halo-mask)');
+  svg.appendChild(haloBacking);
 
   const rubbleRect = document.createElementNS(NS, 'rect');
   rubbleRect.setAttribute('x', '0');
@@ -227,6 +277,7 @@ export function renderDungeon(
   rubbleRect.setAttribute('height', String(pxH));
   rubbleRect.setAttribute('fill', 'url(#rubble-pattern)');
   rubbleRect.setAttribute('mask', 'url(#halo-mask)');
+  rubbleRect.setAttribute('filter', 'url(#accent-blur)');
   svg.appendChild(rubbleRect);
 
   
@@ -271,7 +322,21 @@ export function renderDungeon(
     corridorFilter.setAttribute('y', String(minPy - pad));
     corridorFilter.setAttribute('width', String(maxPx - minPx + pad * 2));
     corridorFilter.setAttribute('height', String(maxPy - minPy + pad * 2));
-    corridorFilter.innerHTML = insetFilter.innerHTML; // reuse the same shadow recipe
+    corridorFilter.innerHTML = `
+      <feComponentTransfer in="SourceAlpha" result="inverted">
+        <feFuncA type="table" tableValues="1 0"/>
+      </feComponentTransfer>
+      <feGaussianBlur in="inverted" stdDeviation="${SHADOW_BLUR_CORRIDOR}" result="blurred"/>
+      <feOffset in="blurred" dx="${SHADOW_DX_CORRIDOR}" dy="${SHADOW_DY_CORRIDOR}" result="offset"/>
+      <feFlood flood-color="var(--shadow-color)" flood-opacity="0.6" result="tint"/>
+      <feComposite in="tint" in2="offset" operator="in" result="tinted-edge"/>
+      <feComposite in="tinted-edge" in2="SourceAlpha" operator="in" result="clipped"/>
+      <feMerge>
+        <feMergeNode in="SourceGraphic"/>
+        <feMergeNode in="clipped"/>
+      </feMerge>
+    `;
+
     earlyDefs.appendChild(corridorFilter);
 
     const floor = document.createElementNS(NS, 'path');
@@ -481,18 +546,19 @@ export function renderDungeon(
 
     const gap = document.createElementNS(NS, 'rect');
     if (vertical) {
-      // travel is along x -- the erasure spans from the wall out to the
-      // glyph, so the mouth stays visually open even though the door
-      // marker itself is drawn further inside the corridor
-      const lo = Math.min(wallPx, glyphPx) - (insetSign === 0 ? 6 : 0);
-      const hi = Math.max(wallPx, glyphPx) + 6;
+      // travel is along x -- pad always lands on the into-corridor side now,
+      // not just whichever side happens to be numerically larger
+      const farEdge = glyphPx + insetSign * 6;
+      const lo = Math.min(wallPx, farEdge) - (insetSign === 0 ? 6 : 0);
+      const hi = Math.max(wallPx, farEdge) + (insetSign === 0 ? 6 : 0);
       gap.setAttribute('x', String(lo));
       gap.setAttribute('y', String(wallPy));
       gap.setAttribute('width', String(hi - lo));
       gap.setAttribute('height', String(UNIT));
     } else {
-      const lo = Math.min(wallPy, glyphPy) - (insetSign === 0 ? 6 : 0);
-      const hi = Math.max(wallPy, glyphPy) + 6;
+      const farEdge = glyphPy + insetSign * 6;
+      const lo = Math.min(wallPy, farEdge) - (insetSign === 0 ? 6 : 0);
+      const hi = Math.max(wallPy, farEdge) + (insetSign === 0 ? 6 : 0);
       gap.setAttribute('x', String(wallPx));
       gap.setAttribute('y', String(lo));
       gap.setAttribute('width', String(UNIT));
@@ -587,7 +653,7 @@ export function renderDungeon(
   // --- rooms directly flush against their tree parent (no corridor) get one door each ---
   for (const r of rooms) {
     if (r.parentId === null || r.entranceDir === null) continue;
-    if (corridorPairs.has(`${r.parentId}-${r.id}`)) continue;
+    if (corridorPairs.has(`${r.parentId}-${r.id}`) || corridorPairs.has(`${r.id}-${r.parentId}`)) continue;
     const parent = byId.get(r.parentId);
     if (!parent) continue;
     const dir = OPPOSITE[r.entranceDir];
