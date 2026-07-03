@@ -47,7 +47,8 @@ class Corridor(BaseModel):
 
     parent_id: int = Field(alias="parentId")
     child_id: int = Field(alias="childId")
-    points: list[list[int]]
+    points: list[list[float]]
+    branches_from_corridor: bool = Field(False, alias="branchesFromCorridor")
 
 
 class GenerateResponse(BaseModel):

@@ -1,6 +1,6 @@
 import './style.css';
 import { generateDungeon } from './api';
-import { renderDungeon } from './render';
+import { renderDungeon } from './render/index';
 import type { Size } from './types';
 import { setupPanZoom } from './pan-zoom'
 

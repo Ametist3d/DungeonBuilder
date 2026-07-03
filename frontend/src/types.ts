@@ -29,6 +29,7 @@ export interface Corridor {
   parentId: number;
   childId: number;
   points: [number, number][];
+  branchesFromCorridor: boolean;
 }
 
 export interface Opening {
