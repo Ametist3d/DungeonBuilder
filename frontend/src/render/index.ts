@@ -1,4 +1,5 @@
-import type { Room, Corridor, Opening } from '../types';
+import type { Room, Corridor, Opening, RoomNarrative } from '../types';
+import { renderNarrativeLabels } from './narrative-labels';
 import { buildRenderContext } from './context';
 import {
   buildInsetShadowFilter, buildHaloFilter, buildRubblePattern, buildAccentBlurFilter,
@@ -13,11 +14,19 @@ export function renderDungeon(
   corridors: Corridor[] = [],
   entrance: Opening | null = null,
   dungeonExit: Opening | null = null,
-): void {
+  roomNarratives: RoomNarrative[] = [],
+): Set<number> {
   svg.innerHTML = '';
-  if (rooms.length === 0) return;
+  if (rooms.length === 0) return new Set<number>();
 
-  const ctx = buildRenderContext(svg, rooms, corridors, entrance, dungeonExit);
+  const ctx = buildRenderContext(
+    svg,
+    rooms,
+    corridors,
+    entrance,
+    dungeonExit,
+    roomNarratives.length ? 8 : 2,
+  );
 
   buildInsetShadowFilter(ctx.defs);
   buildHaloFilter(ctx.defs);
@@ -33,4 +42,6 @@ export function renderDungeon(
   renderCompass(ctx);
   renderScaleBar(ctx);
   renderDoors(ctx, entrance, dungeonExit);
+
+  return renderNarrativeLabels(ctx, roomNarratives);
 }

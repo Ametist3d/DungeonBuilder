@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, Field
 Direction = Literal["N", "E", "S", "W"]
 Size = Literal["small", "medium", "large"]
 Shape = Literal["rect", "circle", "octagon"]
+LLMProvider = Literal["local", "api"]
 
 class Room(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
@@ -38,6 +39,7 @@ class GenerateRequest(BaseModel):
     circle_pct: int = Field(20, ge=0, le=100, alias="circlePct")
     octagon_pct: int = Field(20, ge=0, le=100, alias="octagonPct")
     accent_pct: int = Field(15, ge=0, le=100, alias="accentPct")
+    llm_provider: LLMProvider = Field("local", alias="llmProvider")
 
 
 class Corridor(BaseModel):

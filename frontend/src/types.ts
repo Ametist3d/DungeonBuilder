@@ -1,6 +1,7 @@
 export type Direction = 'N' | 'E' | 'S' | 'W';
 export type Size = 'small' | 'medium' | 'large';
 export type Shape = 'rect' | 'circle' | 'octagon';
+export type LLMProvider = 'local' | 'api';
 
 export interface Room {
   id: number;
@@ -23,6 +24,7 @@ export interface GenerateRequest {
   circlePct: number;
   octagonPct: number;
   accentPct: number;
+  llmProvider?: LLMProvider;
 }
 
 export interface Corridor {
@@ -45,4 +47,17 @@ export interface GenerateResponse {
   corridors: Corridor[];
   entrance: Opening;
   exit: Opening;
+}
+
+export interface RoomNarrative {
+  id: number;
+  label: string;
+  mapLabel?: string;
+  description: string;
+}
+
+export interface DungeonNarrative {
+  title: string;
+  premise: string;
+  rooms: RoomNarrative[];
 }

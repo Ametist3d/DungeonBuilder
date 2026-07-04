@@ -1,4 +1,5 @@
 import secrets
+from typing import Any
 
 from fastapi import APIRouter
 
@@ -6,7 +7,7 @@ from ..generator.rng import make_rng
 from ..generator.pipeline import SIZE_TARGETS, generate_dungeon
 from ..models import Corridor, GenerateRequest, GenerateResponse, Opening, Room
 from ..narrative.context import build_narrative_context
-from ..narrative.llm import DungeonNarrative, generate_narrative
+from ..narrative.llm import generate_narrative
 
 router = APIRouter(prefix="/api/dungeon", tags=["dungeon"])
 
@@ -49,16 +50,23 @@ def generate(req: GenerateRequest) -> GenerateResponse:
         exit=Opening(room_id=exit_opening.room_id, direction=exit_opening.direction),
     )
 
-@router.post("/narrate", response_model=DungeonNarrative)
-def narrate(req: GenerateRequest) -> DungeonNarrative:
+@router.post("/narrate")
+def narrate(req: GenerateRequest) -> Any:
+    '''Generate a dungeon and return a narrative description of it.'''
+    
     seed = req.seed or secrets.token_hex(4)
+
     lo, hi = SIZE_TARGETS[req.size]
     count_rng = make_rng(seed + "#count")
     target = count_rng.randint(lo, hi)
+
     rooms, corridors, entrance, exit_opening = generate_dungeon(
-        seed, target, req.symmetry_break,
+        seed,
+        target,
+        req.symmetry_break,
         shape_weights=(req.rect_pct, req.circle_pct, req.octagon_pct),
         accent_pct=req.accent_pct,
     )
+
     context = build_narrative_context(rooms, corridors, entrance, exit_opening)
-    return generate_narrative(context)
+    return generate_narrative(context, req.llm_provider)

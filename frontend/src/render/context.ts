@@ -48,6 +48,7 @@ export function buildRenderContext(
   corridors: Corridor[],
   entrance: Opening | null,
   dungeonExit: Opening | null,
+  padCells = 2,
 ): RenderContext {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for (const r of rooms) {
@@ -78,7 +79,7 @@ export function buildRenderContext(
     maxY = Math.max(maxY, wy, ty);
   }
 
-  const pad = 2;
+  const pad = padCells;
   minX -= pad; minY -= pad; maxX += pad; maxY += pad;
   const pxW = (maxX - minX) * UNIT;
   const pxH = (maxY - minY) * UNIT;

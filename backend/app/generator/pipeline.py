@@ -105,7 +105,11 @@ def generate_dungeon(
 
     used = used_directions(rooms, corridors)
     root_room = rooms[0]
-    last_room = max(rooms, key=lambda r: r.id)
+    root_cx, root_cy = root_room.x + root_room.w / 2, root_room.y + root_room.h / 2
+    last_room = max(
+        rooms,
+        key=lambda r: (r.x + r.w / 2 - root_cx) ** 2 + (r.y + r.h / 2 - root_cy) ** 2,
+    )
 
     entrance_dir = pick_open_wall(used[root_room.id], rng)
     used[root_room.id].add(entrance_dir)  # so a single-room dungeon doesn't reuse the same wall

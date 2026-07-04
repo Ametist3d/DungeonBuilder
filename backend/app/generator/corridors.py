@@ -15,7 +15,7 @@ CORRIDOR_MIN_LEN = 4
 CORRIDOR_MAX_LEN = 8
 CORRIDOR_JOG_CHANCE = 0.7
 CORRIDOR_JOG_MIN = 2
-CORRIDOR_JOG_MAX = 3
+CORRIDOR_JOG_MAX = 6
 CORRIDOR_ZIGZAG_CHANCE = 0.8
 MIN_LEG = 2
 
@@ -274,7 +274,7 @@ def _route_points(a1, b1, a2, b2, rng, vertical_first=False):
         if hi - lo < 2 * MIN_LEG:
             return None
         turn = rng.randint(lo + MIN_LEG, hi - MIN_LEG)
-        if hi - lo >= 3 * MIN_LEG and rng.random() < CORRIDOR_ZIGZAG_CHANCE:
+        if hi - lo >= 3 * MIN_LEG and abs(b2 - b1) >= 2 * MIN_LEG and rng.random() < CORRIDOR_ZIGZAG_CHANCE:
             mid_b = b1 + (b2 - b1) // 2
             lo2, hi2 = turn + MIN_LEG, hi - MIN_LEG
             if lo2 <= hi2:
@@ -287,7 +287,7 @@ def _route_points(a1, b1, a2, b2, rng, vertical_first=False):
     if hi - lo < 2 * MIN_LEG:
         return None
     turn = rng.randint(lo + MIN_LEG, hi - MIN_LEG)
-    if hi - lo >= 3 * MIN_LEG and rng.random() < CORRIDOR_ZIGZAG_CHANCE:
+    if hi - lo >= 3 * MIN_LEG and abs(a2 - a1) >= 2 * MIN_LEG and rng.random() < CORRIDOR_ZIGZAG_CHANCE:
         mid_a = a1 + (a2 - a1) // 2
         lo2, hi2 = turn + MIN_LEG, hi - MIN_LEG
         if lo2 <= hi2:
