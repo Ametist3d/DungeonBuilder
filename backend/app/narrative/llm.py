@@ -8,7 +8,9 @@ from typing import Any, Literal
 from groq import Groq
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+import logging
 
+logger = logging.getLogger("uvicorn.error")
 
 def _load_dotenv() -> None:
     root = Path(__file__).resolve().parents[3]
@@ -62,7 +64,7 @@ class RoomNarrative(BaseModel):
     map_label: str | None = Field(
         None,
         alias="mapLabel",
-        description="Short map callout text narrative related to map label and story, max {MAX_MAP_LABEL_CHARS} characters, no line breaks",
+        description=f"Short map callout text narrative related to map label and story, max {MAX_MAP_LABEL_CHARS} characters, no line breaks",
     )
     description: str = Field(description="1-2 sentence read-aloud description")
 
@@ -83,8 +85,16 @@ def _compact_text(value: Any, limit: int) -> str:
     cut = text[: limit - 1].rsplit(" ", 1)[0]
     return f"{cut or text[: limit - 1]}…"
 
+def _preview(text: str, limit: int = 1200) -> str:
+    text = text.replace("\n", "\\n")
+    return text[:limit] + ("..." if len(text) > limit else "")
+
 def _extract_json(text: str) -> dict:
-    text = text.strip()
+    original = text or ""
+    text = original.strip()
+
+    if not text:
+        raise RuntimeError("LLM returned empty response")
 
     if text.startswith("```"):
         text = re.sub(r"^```(?:json)?\s*", "", text)
@@ -92,12 +102,14 @@ def _extract_json(text: str) -> dict:
 
     try:
         return json.loads(text)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as exc:
         match = re.search(r"\{.*\}", text, re.DOTALL)
-        if not match:
-            raise
-        return json.loads(match.group(0))
+        if match:
+            return json.loads(match.group(0))
 
+        logger.error("Non-JSON LLM response preview: %s", _preview(original))
+        raise RuntimeError(f"LLM returned non-JSON response: {_preview(original)}") from exc
+    
 
 def _ollama_chat(context: dict) -> str:
     room_ids = [r["id"] for r in context["rooms"]]
@@ -160,7 +172,9 @@ Dungeon context:
     except urllib.error.URLError as exc:
         raise RuntimeError(f"Ollama request failed: {exc}") from exc
 
-    return data["message"]["content"]
+    content = data.get("message", {}).get("content", "")
+    logger.warning("Ollama raw response preview: %s", _preview(content))
+    return content
 
 
 def _groq_chat(context: dict) -> str:
@@ -170,8 +184,9 @@ def _groq_chat(context: dict) -> str:
     room_ids = [r["id"] for r in context["rooms"]]
 
     prompt = f"""
-Return valid JSON matching this exact schema:
+Return ONLY valid JSON. No markdown. No prose before or after JSON.
 
+Schema:
 {{
   "title": "short dungeon title",
   "premise": "2-4 sentence dungeon hook/backstory",
@@ -186,35 +201,52 @@ Return valid JSON matching this exact schema:
 }}
 
 Rules:
-- "rooms" MUST be an array of objects, never strings.
-- Every room object MUST contain id, label, mapLabel, description.
-- mapLabel must be max {MAX_MAP_LABEL_CHARS} characters, one compact sentence fragment, no line breaks.
-- description must be max {MAX_DESCRIPTION_CHARS} characters.
+- Root value must be a JSON object.
+- "rooms" must be an array of objects, never strings.
+- Every room object must contain id, label, mapLabel, description.
+- mapLabel max {MAX_MAP_LABEL_CHARS} characters, no line breaks.
+- description max {MAX_DESCRIPTION_CHARS} characters.
 - Include exactly these room ids: {room_ids}
-- Do not return placeholders like "description_2".
 - Do not invent extra ids.
-- Return JSON only.
+- Do not return placeholders.
+- Do not use trailing commas.
 
 Dungeon context:
 {json.dumps(context, ensure_ascii=False)}
 """.strip()
 
+    messages = [
+        {"role": "system", "content": "Return only valid JSON."},
+        {"role": "user", "content": prompt},
+    ]
+
+    logger.warning("Groq narrative request model=%s rooms=%s", GROQ_MODEL, room_ids)
+
     try:
         response = GROQ_CLIENT.chat.completions.create(
             model=GROQ_MODEL,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=0.8,
+            messages=messages,
+            temperature=0.2,
             max_tokens=4096,
             response_format={"type": "json_object"},
         )
-    except Exception as exc:
-        raise RuntimeError(f"Groq request failed: {exc}") from exc
+    except Exception as strict_exc:
+        logger.warning("Groq JSON mode failed, retrying without response_format: %s", strict_exc)
 
-    content = response.choices[0].message.content
-    if not content:
+        try:
+            response = GROQ_CLIENT.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=messages,
+                temperature=0.2,
+                max_tokens=4096,
+            )
+        except Exception as fallback_exc:
+            raise RuntimeError(f"Groq request failed: {fallback_exc}") from fallback_exc
+
+    content = response.choices[0].message.content or ""
+    logger.warning("Groq raw response preview: %s", _preview(content))
+
+    if not content.strip():
         raise RuntimeError("Groq returned empty response")
 
     return content
@@ -310,6 +342,8 @@ def _normalize_narrative(parsed: dict, context: dict) -> DungeonNarrative:
     return DungeonNarrative(title=title, premise=premise, rooms=rooms)
 
 def generate_narrative(context: dict, provider: LLMProvider = "local") -> DungeonNarrative:
+    logger.warning("Generating narrative with provider=%s", provider)
+
     raw = _groq_chat(context) if provider == "api" else _ollama_chat(context)
     parsed = _extract_json(raw)
 
