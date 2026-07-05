@@ -8,7 +8,7 @@ from .rng import make_rng
 # --- door classes ---
 
 DoorState = Literal["open", "closed"]
-DoorMaterial = Literal["wood", "iron", "stone", "bone", "arcane"]
+DoorMaterial = Literal["wood", "iron", "stone", "bone", "force field", "bronze"]
 DoorLock = Literal["none", "locked", "sealed", "magicSealed", "puzzleSealed"]
 
 # --- directions ---
@@ -136,8 +136,8 @@ def _closed_style(seed: str, door_key: str) -> tuple[DoorMaterial, DoorLock, str
         ("wood", "locked", "locked wooden door"),
         ("iron", "locked", "locked iron-banded door"),
         ("stone", "sealed", "sealed stone door"),
-        ("arcane", "magicSealed", "magic-sealed door"),
-        ("arcane", "puzzleSealed", "puzzle-sealed arcane door"),
+        ("stone", "magicSealed", "magic-sealed stone door"),
+        ("puzzle", "puzzleSealed", "puzzle-sealed mechanism door"),
         ("bone", "sealed", "sealed bone-inlaid door"),
     ]
 

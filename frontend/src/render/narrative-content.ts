@@ -92,13 +92,33 @@ function awayFromCenterBadge(point: Point, center: Point): boolean {
 }
 
 function buildCandidates(ctx: RenderContext, room: Room, markerCount: number): Point[] {
-  const [x, y] = ctx.toPx(room.x, room.y);
+  const [roomPxX, roomPxY] = ctx.toPx(room.x, room.y);
   const w = room.w * UNIT;
   const h = room.h * UNIT;
-  const pad = Math.min(WALL_PAD, Math.max(8, Math.min(w, h) * 0.22));
-  const innerW = Math.max(1, w - pad * 2);
-  const innerH = Math.max(1, h - pad * 2);
   const rand = randomFrom(`${room.id}:${markerCount}:${room.x}:${room.y}`);
+
+  const marginX = room.w >= 4 ? 1 : 0;
+  const marginY = room.h >= 4 ? 1 : 0;
+
+  const cells: Point[] = [];
+
+  const collectCells = (mx: number, my: number): void => {
+    for (let gy = room.y + my; gy < room.y + room.h - my; gy++) {
+      for (let gx = room.x + mx; gx < room.x + room.w - mx; gx++) {
+        const [x, y] = ctx.toPx(gx + 0.5, gy + 0.5);
+
+        if (pointFitsRoom(room, x, y, { x: roomPxX, y: roomPxY }, w, h)) {
+          cells.push({ x, y });
+        }
+      }
+    }
+  };
+
+  collectCells(marginX, marginY);
+
+  if (!cells.length && (marginX || marginY)) {
+    collectCells(0, 0);
+  }
 
   const anchors: [number, number][] = [
     [0.25, 0.25],
@@ -120,24 +140,21 @@ function buildCandidates(ctx: RenderContext, room: Room, markerCount: number): P
     [anchors[i], anchors[j]] = [anchors[j], anchors[i]];
   }
 
-  const candidates = anchors.map(([ax, ay]) => {
-    const jitterX = (rand() - 0.5) * Math.min(10, innerW * 0.15);
-    const jitterY = (rand() - 0.5) * Math.min(10, innerH * 0.15);
+  const score = (point: Point): number => {
+    const nx = (point.x - roomPxX) / w;
+    const ny = (point.y - roomPxY) / h;
 
-    return {
-      x: x + pad + innerW * ax + jitterX,
-      y: y + pad + innerH * ay + jitterY,
-    };
-  });
+    let best = Infinity;
 
-  for (let i = 0; i < 16; i++) {
-    candidates.push({
-      x: x + pad + innerW * rand(),
-      y: y + pad + innerH * rand(),
+    anchors.forEach(([ax, ay], index) => {
+      const d = Math.hypot(nx - ax, ny - ay) + index * 0.025;
+      best = Math.min(best, d);
     });
-  }
 
-  return candidates.filter((point) => pointFitsRoom(room, point.x, point.y, { x, y }, w, h));
+    return best + rand() * 0.015;
+  };
+
+  return cells.sort((a, b) => score(a) - score(b));
 }
 
 function pickMarkerPoints(ctx: RenderContext, room: Room, count: number): Point[] {
@@ -163,10 +180,12 @@ function pickMarkerPoints(ctx: RenderContext, room: Room, count: number): Point[
     if (fallback) {
       picked.push(fallback);
     } else {
-      picked.push({
-        x: center.x + CENTER_BADGE_RADIUS,
-        y: center.y,
-      });
+      const [x, y] = ctx.toPx(
+        room.x + Math.floor(room.w / 2) + 0.5,
+        room.y + Math.floor(room.h / 2) + 0.5,
+      );
+
+      picked.push({ x, y });
     }
   }
 

@@ -7,7 +7,7 @@ Size = Literal["small", "medium", "large"]
 Shape = Literal["rect", "circle", "octagon"]
 LLMProvider = Literal["local", "api"]
 DoorState = Literal["open", "closed"]
-DoorMaterial = Literal["wood", "iron", "stone", "bone", "arcane"]
+DoorMaterial = Literal["wood", "iron", "stone", "bone", "puzzle"]
 DoorLock = Literal["none", "locked",  "sealed", "magicSealed", "puzzleSealed"]
 
 class Door(BaseModel):

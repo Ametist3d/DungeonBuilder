@@ -21,8 +21,8 @@ const DOOR_ROWS = [
   { label: 'Iron locked', className: 'door-iron door-locked' },
   { label: 'Stone sealed', className: 'door-stone door-sealed' },
   { label: 'Bone sealed', className: 'door-bone door-sealed' },
-  { label: 'Magic sealed', className: 'door-arcane door-magicSealed' },
-  { label: 'Puzzle sealed', className: 'door-arcane door-puzzleSealed' },
+  { label: 'Magic sealed', className: 'door-magic door-magicSealed' },
+  { label: 'Puzzle sealed', className: 'door-puzzle door-puzzleSealed' },
 ];
 
 function iconSvg(kind: NarrativeElementKind): string {
@@ -61,9 +61,15 @@ export function setupMapOverlay(container: HTMLElement): void {
   const overlay = document.createElement('div');
   overlay.className = 'map-ui-overlay';
   overlay.innerHTML = `
-    <div class="map-ui-compass" aria-label="Compass">
-      <div class="map-ui-compass-n">N</div>
-      <div class="map-ui-compass-needle"></div>
+    <div class="map-ui-topbar">
+      <div class="map-ui-compass" aria-label="Compass">
+        <div class="map-ui-compass-n">N</div>
+        <div class="map-ui-compass-needle"></div>
+      </div>
+
+      <button class="map-ui-settings-toggle" type="button" aria-label="Hide settings" title="Hide settings">
+        ▸
+      </button>
     </div>
 
     <section class="map-ui-legend" aria-label="Map legend">
@@ -76,6 +82,18 @@ export function setupMapOverlay(container: HTMLElement): void {
       ${doorRows()}
     </section>
   `;
+
+  const toggle = overlay.querySelector('.map-ui-settings-toggle') as HTMLButtonElement;
+  const shell = document.querySelector('.app-shell');
+
+  toggle.addEventListener('click', () => {
+    shell?.classList.toggle('settings-collapsed');
+
+    const collapsed = shell?.classList.contains('settings-collapsed') ?? false;
+    toggle.textContent = collapsed ? '◂' : '▸';
+    toggle.setAttribute('aria-label', collapsed ? 'Show settings' : 'Hide settings');
+    toggle.setAttribute('title', collapsed ? 'Show settings' : 'Hide settings');
+  });
 
   container.appendChild(overlay);
 }

@@ -4,7 +4,7 @@ export type Shape = 'rect' | 'circle' | 'octagon';
 export type LLMProvider = 'local' | 'api';
 
 export type DoorState = 'open' | 'closed';
-export type DoorMaterial = 'wood' | 'iron' | 'stone' | 'bone' | 'arcane';
+export type DoorMaterial = 'wood' | 'iron' | 'stone' | 'bone' | 'puzzle';
 export type DoorLock = 'none' | 'locked' | 'sealed' | 'magicSealed' | 'puzzleSealed';
 
 export interface Room {

@@ -72,12 +72,20 @@ body {
 /* Main layout */
 
 .app-shell {
+  --settings-width: 320px;
+  --settings-peek: 18px;
+
   width: 100vw;
   height: calc(100vh - 46px);
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 320px;
+  grid-template-columns: minmax(0, 1fr) var(--settings-width);
   overflow: hidden;
   background: var(--bg);
+  transition: grid-template-columns 260ms ease;
+}
+
+.app-shell.settings-collapsed {
+  grid-template-columns: minmax(0, 1fr) var(--settings-peek);
 }
 
 .canvas-wrap {
@@ -104,7 +112,7 @@ svg,
 /* Right settings panel */
 
 .settings-sidebar {
-  width: 320px;
+  width: var(--settings-width);
   height: 100%;
   padding: 16px;
   overflow-y: auto;
@@ -112,6 +120,13 @@ svg,
   background: var(--panel);
   color: var(--text);
   font-size: 13px;
+  transition: opacity 180ms ease;
+}
+
+.app-shell.settings-collapsed .settings-sidebar {
+  opacity: 0.45;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .sidebar-actions {
@@ -531,9 +546,8 @@ text.room-label {
   stroke: #998b65;
 }
 
-.door-arcane {
+.door-puzzle {
   stroke: var(--accent);
-  stroke-dasharray: 3 2;
 }
 
 .door-magicSealed,
@@ -562,10 +576,37 @@ text.room-label {
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
 }
 
+.map-ui-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 6px;
+}
+
+.map-ui-settings-toggle {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1.5px solid var(--ink);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--room-fill) 90%, white 10%);
+  color: var(--ink);
+  box-shadow: 1px 1px 0 var(--shadow-color);
+  pointer-events: auto;
+  cursor: pointer;
+  font-size: 28px;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+}
+
+.map-ui-settings-toggle:hover {
+  filter: brightness(1.08);
+}
+
 .map-ui-compass {
   width: 34px;
   height: 34px;
-  margin: 0 0 6px auto;
   position: relative;
   border: 1.5px solid var(--ink);
   border-radius: 50%;
@@ -730,7 +771,11 @@ text.room-label {
   background: #998b65;
 }
 
-.map-ui-door-swatch.door-arcane::before {
+.map-ui-door-swatch.door-puzzle {
+  border-color: var(--accent);
+}
+
+.map-ui-door-swatch.door-magic::before {
   background: repeating-linear-gradient(
     90deg,
     var(--accent) 0 4px,

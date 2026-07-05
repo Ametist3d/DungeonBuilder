@@ -5,6 +5,115 @@ from collections import deque
 
 from ..generator.entities import Corridor, Opening, RoomNode, Door
 
+CONTENT_TYPE_ALIASES = {
+    # loot
+    "loot": "loot", "treasure": "loot", "reward": "loot", "prize": "loot", "stash": "loot",
+    "cache": "loot", "chest": "loot", "coffer": "loot", "reliquary": "loot", "valuables": "loot",
+    "coins": "loot", "gold": "loot", "gems": "loot", "jewelry": "loot", "magicitem": "loot",
+    "item": "loot", "weapon": "loot", "armor": "loot", "potion": "loot", "scroll": "loot",
+    "tome": "loot",
+
+    # enemy
+    "enemy": "enemy", "foe": "enemy", "monster": "enemy", "creature": "enemy", "beast": "enemy",
+    "guardian": "enemy", "guard": "enemy", "sentinel": "enemy", "minion": "enemy", "boss": "enemy",
+    "undead": "enemy", "spirit": "enemy", "ghost": "enemy", "demon": "enemy", "fiend": "enemy",
+    "cultist": "enemy", "bandit": "enemy", "golem": "enemy", "construct": "enemy", "swarm": "enemy",
+
+    # trap
+    "trap": "trap", "snare": "trap", "pitfall": "trap", "pit": "trap", "ambush": "trap",
+    "deadfall": "trap", "alarm": "trap", "glyph": "trap", "runetrap": "trap",
+    "pressureplate": "trap", "tripwire": "trap", "poisonneedle": "trap",
+
+    # npc
+    "npc": "npc", "character": "npc", "nonplayercharacter": "npc", "ally": "npc",
+    "prisoner": "npc", "captive": "npc", "survivor": "npc", "merchant": "npc",
+    "guide": "npc", "sage": "npc", "hermit": "npc", "acolyte": "npc", "priest": "npc",
+    "spiritguide": "npc", "informant": "npc",
+
+    # clue
+    "clue": "clue", "hint": "clue", "evidence": "clue", "trace": "clue", "sign": "clue",
+    "mark": "clue", "message": "clue", "note": "clue", "letter": "clue", "journal": "clue",
+    "diary": "clue", "inscription": "clue", "symbol": "clue", "map": "clue", "prophecy": "clue",
+    "vision": "clue", "memory": "clue", "omen": "clue", "trail": "clue",
+
+    # ritual object
+    "ritualobject": "ritualObject", "ritual": "ritualObject", "artifact": "ritualObject",
+    "artefact": "ritualObject", "relic": "ritualObject", "idol": "ritualObject",
+    "altar": "ritualObject", "shrine": "ritualObject", "totem": "ritualObject",
+    "sigil": "ritualObject", "seal": "ritualObject", "focus": "ritualObject",
+    "orb": "ritualObject", "crystal": "ritualObject", "chalice": "ritualObject",
+    "censer": "ritualObject", "mask": "ritualObject", "keystone": "ritualObject",
+
+    # hazard
+    "hazard": "hazard", "danger": "hazard", "threat": "hazard", "obstacle": "hazard",
+    "fire": "hazard", "flame": "hazard", "lava": "hazard", "acid": "hazard",
+    "poison": "hazard", "gas": "hazard", "fumes": "hazard", "mist": "hazard",
+    "curse": "hazard", "disease": "hazard", "rot": "hazard", "collapse": "hazard",
+    "unstablefloor": "hazard", "fallingrocks": "hazard", "flood": "hazard",
+    "darkness": "hazard", "void": "hazard",
+
+    # secret
+    "secret": "secret", "trigger": "secret", "key": "secret", "puzzle": "secret",
+    "lever": "secret", "switch": "secret", "disenchant scroll": "secret", "bone-key": "secret",
+    "hidden lever": "secret", "arcane key": "secret", "stone-key": "secret", "steel-key": "secret",
+}
+
+GROQ_JSON_SCHEMA = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "dungeon_narrative",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "premise": {"type": "string"},
+                "rooms": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "id": {"type": "integer"},
+                            "label": {"type": "string"},
+                            "mapLabel": {"type": "string"},
+                            "description": {"type": "string"},
+                            "content": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "type": {
+                                            "type": "string",
+                                            "enum": [
+                                                "loot",
+                                                "enemy",
+                                                "trap",
+                                                "npc",
+                                                "clue",
+                                                "ritualObject",
+                                                "hazard",
+                                                "secret",
+                                            ],
+                                        },
+                                        "quantity": {"type": "integer"},
+                                        "description": {"type": "string"},
+                                    },
+                                    "required": ["type", "quantity", "description"],
+                                    "additionalProperties": False,
+                                },
+                            },
+                        },
+                        "required": ["id", "label", "mapLabel", "description", "content"],
+                        "additionalProperties": False,
+                    },
+                },
+            },
+            "required": ["title", "premise", "rooms"],
+            "additionalProperties": False,
+        },
+    },
+}
+
 def _room_size(r: RoomNode) -> str:
     area = r.w * r.h
     if area <= 12:
@@ -64,41 +173,44 @@ def build_narrative_context(
     for door in doors:
         doors_by_room.setdefault(door.room_id, []).append(door)
 
+    def flags(room: RoomNode) -> str:
+        value = ""
+        if room.id in critical_path:
+            value += "m"
+        if len(edges[room.id]) >= 3:
+            value += "h"
+        if len(edges[room.id]) == 1:
+            value += "d"
+        if room.accent:
+            value += "a"
+        return value or "-"
+
+    def compact_connections(room_id: int) -> str:
+        return " ".join(
+            f"{to}{kind[0]}"
+            for to, kind in sorted(edges[room_id], key=lambda item: item[0])
+        )
+
+    def compact_closed_doors(room_id: int) -> str:
+        return " ".join(
+            f"{door.other_room_id}:{door.material}:{door.lock}"
+            for door in doors_by_room.get(room_id, [])
+            if door.state == "closed"
+        )
+
     return {
-        "roomCount": len(rooms),
-        "entrance": {"roomId": entrance.room_id, "dir": entrance.direction},
-        "exit": {"roomId": exit_opening.room_id, "dir": exit_opening.direction},
-        "legend": {
-            "sh": "shape",
-            "sz": "size",
-            "d": "depth",
-            "a": "accent",
-            "c": "connections",
-            "k": "corridor kind: c=corridor, b=branch",
-            "main": "on main entrance-exit path",
-            "closedDoors": "closed doors from this room side",
-        },
-        "rooms": [
-            {
-                "id": r.id,
-                "sh": r.shape,
-                "sz": _room_size(r),
-                "d": r.depth,
-                "a": r.accent,
-                "c": [{"to": to, "k": kind[0]} for to, kind in edges[r.id]],
-                "dead": len(edges[r.id]) == 1,
-                "hub": len(edges[r.id]) >= 3,
-                "main": r.id in critical_path,
-                "closedDoors": [
-                    {
-                        "to": door.other_room_id,
-                        "m": door.material,
-                        "lock": door.lock,
-                    }
-                    for door in doors_by_room.get(r.id, [])
-                    if door.state == "closed"
-                ],
-            }
-            for r in rooms
+        "n": len(rooms),
+        "e": entrance.room_id,
+        "x": exit_opening.room_id,
+        "k": "room=[id,depth,flags,links,closedDoors]; flags m=main h=hub d=dead a=accent; links 5c=corridor to room5, 5b=branch to room5; closedDoors to:material:lock",
+        "r": [
+            [
+                room.id,
+                room.depth,
+                flags(room),
+                compact_connections(room.id),
+                compact_closed_doors(room.id),
+            ]
+            for room in rooms
         ],
     }

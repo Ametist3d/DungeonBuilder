@@ -8,6 +8,7 @@ from typing import Any, Literal
 from groq import Groq
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from .context import CONTENT_TYPE_ALIASES, GROQ_JSON_SCHEMA
 import logging
 
 logger = logging.getLogger("uvicorn.error")
@@ -43,11 +44,13 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 GROQ_CLIENT = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-MAX_MAP_LABEL_CHARS = 320
-MAX_DESCRIPTION_CHARS = 620
-MAX_CONTENT_DESCRIPTION_CHARS = 120
-GROQ_MAX_TOKENS = int(os.getenv("GROQ_MAX_TOKENS", "3000"))
-OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "3200"))
+MAX_MAP_LABEL_CHARS = 180
+MAX_DESCRIPTION_CHARS = 360
+MAX_CONTENT_DESCRIPTION_CHARS = 90
+GROQ_MAX_TOKENS = int(os.getenv("GROQ_MAX_TOKENS", "6096"))
+OLLAMA_NUM_PREDICT = int(os.getenv("OLLAMA_NUM_PREDICT", "8192"))
+
+GROQ_IS_GPT_OSS = GROQ_MODEL.lower().startswith("openai/gpt-oss")
 
 CONTENT_TYPES = ("loot", "enemy", "trap", "npc", "clue", "ritualObject", "hazard", "secret")
 
@@ -63,35 +66,20 @@ BANNED_GEOMETRY_PHRASES = (
     "exit is",
 )
 
-CONTENT_TYPE_ALIASES = {
-    "loot": "loot",
-    "treasure": "loot",
-    "enemy": "enemy",
-    "monster": "enemy",
-    "creature": "enemy",
-    "trap": "trap",
-    "npc": "npc",
-    "character": "npc",
-    "nonplayercharacter": "npc",
-    "clue": "clue",
-    "hint": "clue",
-    "ritualobject": "ritualObject",
-    "ritual_object": "ritualObject",
-    "ritual-object": "ritualObject",
-    "ritual": "ritualObject",
-    "artifact": "ritualObject",
-    "relic": "ritualObject",
-    "hazard": "hazard",
-    "danger": "hazard",
-    "secret": "secret",
-    "hidden": "secret",
-}
 
-# SYSTEM_PROMPT = """Write compact fantasy tabletop dungeon content.
-# Use the dungeon graph to create one coherent scenario with hook, twist, climax, and possible endings.
-# Then create room notes from topology: hubs are junctions/decision/social spaces; dead ends hide secrets, treasure, traps, prisoners, or final threats; main-path rooms advance the core plot; branch rooms are optional discoveries.
-# Each room needs scenario-aligned content: loot, enemy, trap, npc, clue, ritualObject, hazard, or secret.
-# Closed doors are intentional obstacles and must affect lore/tactics.
+
+# SYSTEM_PROMPT = """Write compact fantasy tabletop dungeon JSON.
+
+# Use the compact graph only for pacing and room importance.
+# Do not describe size, shape, coordinates, corridors, exits, or visible layout.
+
+# Create one coherent dungeon story with hook, mystery, twist, climax, and possible endings.
+# Each room must support that story and include 1-3 meaningful elements:
+# loot, enemy, trap, npc, clue, ritualObject, hazard, or secret.
+
+# Closed doors are story obstacles. Unlock tools must be in a different room
+# than the closed door they unlock.
+
 # Return valid JSON only."""
 
 SYSTEM_PROMPT = """You are a fantasy tabletop dungeon writer.
@@ -111,6 +99,8 @@ Your job:
 5. Closed doors are story obstacles: locked, barred, sealed, cursed,
    guarded, puzzle-gated, or magic-sealed. Use them to create tension,
    foreshadowing, keys, rituals, clues, or tactical choices.
+6. Each closed door should have corresponding key placed in any accessible room before that locked door.
+7. Keys, unlock mechanisms or other unlock tools shold have name matching its door.
 
 Topology guidance:
 - hub rooms are social spaces, decision points, ritual centers, ambush zones,
@@ -143,6 +133,38 @@ class DungeonNarrative(BaseModel):
     premise: str = Field(description="2-4 sentence dungeon hook/backstory")
     rooms: list[RoomNarrative]
 
+def _groq_kwargs(messages: list[dict[str, str]], *, response_format: dict | None = None) -> dict:
+    kwargs: dict[str, Any] = {
+        "model": GROQ_MODEL,
+        "messages": messages,
+        "temperature": 0.2,
+    }
+
+    if GROQ_IS_GPT_OSS:
+        kwargs["max_completion_tokens"] = GROQ_MAX_TOKENS
+        kwargs["reasoning_format"] = "hidden"
+        kwargs["reasoning_effort"] = "low"
+    else:
+        kwargs["max_tokens"] = GROQ_MAX_TOKENS
+
+    if response_format:
+        kwargs["response_format"] = response_format
+
+    return kwargs
+
+
+def _groq_content(response: Any) -> str:
+    message = response.choices[0].message
+    content = message.content or ""
+
+    if not content.strip():
+        logger.warning(
+            "Groq empty content finish_reason=%s reasoning_preview=%s",
+            getattr(response.choices[0], "finish_reason", ""),
+            _preview(getattr(message, "reasoning", "") or "", 800),
+        )
+
+    return content
 
 def _compact_text(value: Any, limit: int) -> str:
     text = _text(value)
@@ -176,65 +198,99 @@ def _extract_json(text: str) -> dict:
         return json.loads(text)
     except json.JSONDecodeError as exc:
         match = re.search(r"\{.*\}", text, re.DOTALL)
+
         if match:
-            return json.loads(match.group(0))
+            try:
+                return json.loads(match.group(0))
+            except json.JSONDecodeError:
+                pass
 
-        logger.error("Non-JSON LLM response preview: %s", _preview(original))
-        raise RuntimeError(f"LLM returned non-JSON response: {_preview(original)}") from exc
+        logger.error("Invalid JSON LLM response preview: %s", _preview(original))
+        raise exc
+
+def _room_ids(context: dict) -> list[int]:
+    return [int(row[0]) for row in context["r"]]
 
 
+def _room_ids_csv(context: dict) -> str:
+    return ",".join(str(rid) for rid in _room_ids(context))
+    
 def _ollama_chat(context: dict) -> str:
-    room_ids = [r["id"] for r in context["rooms"]]
+    room_ids = _room_ids_csv(context)
+
+#     prompt = f"""
+# Create a story-first fantasy tabletop dungeon scenario from this compact graph.
+
+# Use the graph only to infer pacing and room importance.
+# Do NOT describe room geometry, size, shape, coordinates, corridors, entrances, or visible layout.
+# The player already sees the map.
+
+# Return JSON only:
+
+# {{
+#   "title": "short evocative dungeon title",
+#   "premise": "story summary with hook, conflict, twist, climax, and possible endings",
+#   "rooms": [
+#     {{
+#       "id": 0,
+#       "label": "3-5 word story/location name",
+#       "mapLabel": "short in-world callout, max {MAX_MAP_LABEL_CHARS} chars",
+#       "description": "1-3 story-rich GM sentences, max {MAX_DESCRIPTION_CHARS} chars",
+#       "content": [Dungeon graph:
+#         {{
+#           "type": "loot",
+#           "quantity": 1,
+#           "description": "max {MAX_CONTENT_DESCRIPTION_CHARS} chars, what it is and why it matters"
+#         }}
+#       ]
+#     }}
+#   ]
+# }}
+
+# Rules:
+# - Return valid JSON only. No markdown. No prose outside JSON.
+# - Include exactly these room ids: [{room_ids}]
+# - Every room must have id, label, mapLabel, description, content.
+# - Do not invent, skip, rename, or duplicate room ids.
+# - Do not return placeholders or generic names like Unnamed Room.
+# - Focus on story events, secrets, threats, NPC motives, clues, rituals, consequences, and rewards.
+# - Avoid describing room size, shape, coordinates, doors, entrances, exits, corridors, or map layout unless needed for story.
+# - mapLabel should be an atmospheric clue or hook, not a geometry note.
+# - description should tell what happens here, what can be discovered, and why it matters.
+# - content must contain 1-3 objects.
+# - content.type must be one of: loot, enemy, trap, npc, clue, ritualObject, hazard, secret.
+# - content.quantity must be integer 1-3.
+# - content.description should be a practical GM note tied to scenario lore.
+# - Mention or clearly imply each content item in the room description.
+# - Use hub/dead/main/depth/connectivity only to decide narrative role, not to describe layout.
+# - If room.closedDoors exists, make those doors meaningful obstacles: key, seal, curse, guard, puzzle, ritual, or clue.
+# - Place keys, unlock mechanisms, or other unlock tools in any room with ID different from the room with closed doors they unlock.
+# - Never put keys, unlock mechanisms or other unlock tools in same room ID that contains those closed doors they should unlock.
+# - Never describe the dungeon entrance as closed.
+
+# Compact graph:
+# {_context_json(context)}
+# """.strip()
 
     prompt = f"""
-Create a story-first fantasy tabletop dungeon scenario from this compact graph.
+Return compact valid JSON matching the provided schema.
 
-Use the graph only to infer pacing and room importance.
-Do NOT describe room geometry, size, shape, coordinates, corridors, entrances, or visible layout.
-The player already sees the map.
-
-Return JSON only:
-
-{{
-  "title": "short evocative dungeon title",
-  "premise": "story summary with hook, conflict, twist, climax, and possible endings",
-  "rooms": [
-    {{
-      "id": 0,
-      "label": "3-5 word story/location name",
-      "mapLabel": "short in-world callout, max {MAX_MAP_LABEL_CHARS} chars",
-      "description": "1-3 story-rich GM sentences, max {MAX_DESCRIPTION_CHARS} chars",
-      "content": [
-        {{
-          "type": "loot",
-          "quantity": 1,
-          "description": "max {MAX_CONTENT_DESCRIPTION_CHARS} chars, what it is and why it matters"
-        }}
-      ]
-    }}
-  ]
-}}
+Room ids exactly: [{room_ids}]
 
 Rules:
-- Return valid JSON only. No markdown. No prose outside JSON.
-- Include exactly these room ids: {room_ids}
-- Every room must have id, label, mapLabel, description, content.
-- Do not invent, skip, rename, or duplicate room ids.
-- Do not return placeholders or generic names like Unnamed Room.
-- Focus on story events, secrets, threats, NPC motives, clues, rituals, consequences, and rewards.
-- Avoid describing room size, shape, coordinates, doors, entrances, exits, corridors, or map layout unless needed for story.
-- mapLabel should be an atmospheric clue or hook, not a geometry note.
-- description should tell what happens here, what can be discovered, and why it matters.
-- content must contain 1-3 objects.
-- content.type must be one of: loot, enemy, trap, npc, clue, ritualObject, hazard, secret.
-- content.quantity must be integer 1-3.
-- content.description should be a practical GM note tied to scenario lore.
-- Mention or clearly imply each content item in the room description.
-- Use hub/dead/main/depth/connectivity only to decide narrative role, not to describe layout.
-- If room.closedDoors exists, make those doors meaningful obstacles: key, seal, curse, guard, puzzle, ritual, or clue.
-- Never describe the dungeon entrance as closed.
+- JSON only. No markdown.
+- Every room needs id, label, mapLabel, description, content.
+- content has 1-3 items.
+- content.type: loot, enemy, trap, npc, clue, ritualObject, hazard, secret.
+- content.quantity: 1-3.
+- Tell story, motives, clues, threats, secrets, rewards, consequences.
+- Do not describe geometry, size, shape, coordinates, exits, corridors, or visible layout.
+- Use flags only for narrative role: m=main, h=hub, d=dead, a=accent.
+- Closed doors are story obstacles.
+- Unlock tools must be in another room, not the same closed-door room.
+- Keep strings short.
 
-Dungeon graph:
+Compact graph:
 {_context_json(context)}
 """.strip()
 
@@ -252,6 +308,12 @@ Dungeon graph:
         },
     }
 
+    logger.warning(
+        "Local narrative request model=%s prompt=%s",
+        OLLAMA_MODEL,
+        _preview(prompt, 8192),
+    )
+
     req = urllib.request.Request(
         f"{OLLAMA_BASE_URL}/api/chat",
         data=json.dumps(payload).encode("utf-8"),
@@ -266,101 +328,164 @@ Dungeon graph:
         raise RuntimeError(f"Ollama request failed: {exc}") from exc
 
     content = data.get("message", {}).get("content", "")
-    logger.warning("Ollama raw response preview: %s", _preview(content))
+    logger.warning("Ollama raw response preview: %s", _preview(content, 8192))
     return content
 
+
+def _retry_groq_json(context: dict) -> str:
+    room_ids = _room_ids_csv(context)
+
+    prompt = f"""
+Return valid JSON only.
+
+Schema fields:
+title, premise, rooms.
+Each room: id, label, mapLabel, description, content.
+Each content item: type, quantity, description.
+
+Room ids exactly: [{room_ids}]
+Use exactly 1 content item per room.
+Keep each description under 160 chars.
+
+Graph:
+{_context_json(context)}
+""".strip()
+
+    messages = [
+        {"role": "system", "content": "Return complete valid JSON only."},
+        {"role": "user", "content": prompt},
+    ]
+
+    try:
+        response = GROQ_CLIENT.chat.completions.create(
+            **_groq_kwargs(messages, response_format=GROQ_JSON_SCHEMA)
+        )
+    except Exception as exc:
+        logger.warning("Groq compact strict retry failed, retrying plain: %s", exc)
+        response = GROQ_CLIENT.chat.completions.create(
+            **_groq_kwargs(messages)
+        )
+
+    return _groq_content(response)
 
 def _groq_chat(context: dict) -> str:
     if GROQ_CLIENT is None:
         raise RuntimeError("GROQ_API_KEY is missing in .env")
 
-    room_ids = [r["id"] for r in context["rooms"]]
+    room_ids = _room_ids_csv(context)
+
+#     prompt = f"""
+# Create a story-first fantasy tabletop dungeon scenario from this compact graph.
+
+# Use the graph only to infer pacing and room importance.
+# Do NOT describe room geometry, size, shape, coordinates, corridors, entrances, or visible layout.
+# The player already sees the map.
+
+# Return JSON only:
+
+# {{
+#   "title": "short evocative dungeon title",
+#   "premise": "story summary with hook, conflict, twist, climax, and possible endings",
+#   "rooms": [
+#     {{
+#       "id": 0,
+#       "label": "3-5 word story/location name",
+#       "mapLabel": "short in-world callout, max {MAX_MAP_LABEL_CHARS} chars",
+#       "description": "1-3 story-rich GM sentences, max {MAX_DESCRIPTION_CHARS} chars",
+#       "content": [
+#         {{
+#           "type": "loot",
+#           "quantity": 1,
+#           "description": "max {MAX_CONTENT_DESCRIPTION_CHARS} chars, what it is and why it matters"
+#         }}
+#       ]
+#     }}
+#   ]
+# }}
+
+# Rules:
+# - Return valid JSON only. No markdown. No prose outside JSON.
+# - Include exactly these room ids: [{room_ids}]
+# - Every room must have id, label, mapLabel, description, content.
+# - Do not invent, skip, rename, or duplicate room ids.
+# - Do not return placeholders or generic names like Unnamed Room.
+# - Focus on story events, secrets, threats, NPC motives, clues, rituals, consequences, and rewards.
+# - Avoid describing room size, shape, coordinates, doors, entrances, exits, corridors, or map layout unless needed for story.
+# - mapLabel should be an atmospheric clue or hook, not a geometry note.
+# - Never return Unnamed Room, Unnamed Chamber, or Unnamed Location as a label.
+# - description should tell what happens here, what can be discovered, and why it matters.
+# - content must contain 1-3 objects.
+# - content.type must be one of: loot, enemy, trap, npc, clue, ritualObject, hazard, secret.
+# - content.quantity must be integer 1-3.
+# - content.description should be a practical GM note tied to scenario lore.
+# - Mention or clearly imply each content item in the room description.
+# - Use hub/dead/main/depth/connectivity only to decide narrative role, not to describe layout.
+# - If room.closedDoors exists, make those doors meaningful obstacles: key, seal, curse, guard, puzzle, ritual, or clue.
+# - Place keys, unlock mechanisms, or other unlock tools in any room with ID different from the room with closed doors they unlock.
+# - Never put keys, unlock mechanisms or other unlock tools in same room ID that contains those closed doors they should unlock.
+# - Never describe the dungeon entrance as closed.
+# - Keep all strings short. Finish the JSON completely.
+
+# Compact graph:
+# {_context_json(context)}
+# """.strip()
 
     prompt = f"""
-Create a story-first fantasy tabletop dungeon scenario from this compact graph.
+Return compact valid JSON matching the provided schema.
 
-Use the graph only to infer pacing and room importance.
-Do NOT describe room geometry, size, shape, coordinates, corridors, entrances, or visible layout.
-The player already sees the map.
-
-Return JSON only:
-
-{{
-  "title": "short evocative dungeon title",
-  "premise": "story summary with hook, conflict, twist, climax, and possible endings",
-  "rooms": [
-    {{
-      "id": 0,
-      "label": "3-5 word story/location name",
-      "mapLabel": "short in-world callout, max {MAX_MAP_LABEL_CHARS} chars",
-      "description": "1-3 story-rich GM sentences, max {MAX_DESCRIPTION_CHARS} chars",
-      "content": [
-        {{
-          "type": "loot",
-          "quantity": 1,
-          "description": "max {MAX_CONTENT_DESCRIPTION_CHARS} chars, what it is and why it matters"
-        }}
-      ]
-    }}
-  ]
-}}
+Room ids exactly: [{room_ids}]
 
 Rules:
-- Return valid JSON only. No markdown. No prose outside JSON.
-- Include exactly these room ids: {room_ids}
-- Every room must have id, label, mapLabel, description, content.
-- Do not invent, skip, rename, or duplicate room ids.
-- Do not return placeholders or generic names like Unnamed Room.
-- Focus on story events, secrets, threats, NPC motives, clues, rituals, consequences, and rewards.
-- Avoid describing room size, shape, coordinates, doors, entrances, exits, corridors, or map layout unless needed for story.
-- mapLabel should be an atmospheric clue or hook, not a geometry note.
-- description should tell what happens here, what can be discovered, and why it matters.
-- content must contain 1-3 objects.
-- content.type must be one of: loot, enemy, trap, npc, clue, ritualObject, hazard, secret.
-- content.quantity must be integer 1-3.
-- content.description should be a practical GM note tied to scenario lore.
-- Mention or clearly imply each content item in the room description.
-- Use hub/dead/main/depth/connectivity only to decide narrative role, not to describe layout.
-- If room.closedDoors exists, make those doors meaningful obstacles: key, seal, curse, guard, puzzle, ritual, or clue.
-- Never describe the dungeon entrance as closed.
+- JSON only. No markdown.
+- Every room needs id, label, mapLabel, description, content.
+- content has 1-3 items.
+- content.type: loot, enemy, trap, npc, clue, ritualObject, hazard, secret.
+- content.quantity: 1-3.
+- Tell story, motives, clues, threats, secrets, rewards, consequences.
+- Do not describe geometry, size, shape, coordinates, exits, corridors, or visible layout.
+- Use flags only for narrative role: m=main, h=hub, d=dead, a=accent.
+- Closed doors are story obstacles.
+- Unlock tools must be in another room, not the same closed-door room.
+- Keep strings short.
 
-Dungeon graph:
+Compact graph:
 {_context_json(context)}
 """.strip()
-
+    
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": prompt},
     ]
 
-    logger.warning("Groq narrative request model=%s rooms=%s", GROQ_MODEL, room_ids)
+    logger.warning(
+        "Groq narrative request model=%s prompt=%s",
+        GROQ_MODEL,
+        _preview(prompt, 8192),
+    )
 
     try:
         response = GROQ_CLIENT.chat.completions.create(
-            model=GROQ_MODEL,
-            messages=messages,
-            temperature=0.2,
-            max_tokens=4096,
-            response_format={"type": "json_object"},
+            **_groq_kwargs(messages, response_format=GROQ_JSON_SCHEMA)
         )
     except Exception as strict_exc:
-        logger.warning("Groq JSON mode failed, retrying without response_format: %s", strict_exc)
+        logger.warning("Groq strict JSON failed, retrying plain completion: %s", strict_exc)
 
         try:
             response = GROQ_CLIENT.chat.completions.create(
-                model=GROQ_MODEL,
-                messages=messages,
-                temperature=0.2,
-                max_tokens=GROQ_MAX_TOKENS,
+                **_groq_kwargs(messages)
             )
         except Exception as fallback_exc:
             raise RuntimeError(f"Groq request failed: {fallback_exc}") from fallback_exc
 
-    content = response.choices[0].message.content or ""
-    logger.warning("Groq raw response preview: %s", _preview(content))
+    content = _groq_content(response)
+    logger.warning("Groq raw response preview: %s", _preview(content, 8192))
 
     if not content.strip():
-        raise RuntimeError("Groq returned empty response")
+        logger.warning("Groq returned empty response, retrying ultra-compact prompt")
+        content = _retry_groq_json(context)
+
+    if not content.strip():
+        raise RuntimeError("Groq returned empty response after retry")
 
     return content
 
@@ -402,9 +527,9 @@ def _coerce_content(value: Any) -> list[NarrativeContent]:
             description = _compact_text(
                 item.get("description")
                 or item.get("desc")
-                or item.get("purpose")
+                or item.get("purpose") 
                 or "",
-                180,
+                MAX_CONTENT_DESCRIPTION_CHARS,
             )
 
         else:
@@ -465,7 +590,7 @@ def _coerce_room(item: Any, fallback_id: int | None = None) -> RoomNarrative | N
 
 
 def _normalize_narrative(parsed: dict, context: dict) -> DungeonNarrative:
-    expected_ids = [int(r["id"]) for r in context["rooms"]]
+    expected_ids = _room_ids(context)  
     expected_set = set(expected_ids)
 
     title = _text(parsed.get("title"), "Unnamed Dungeon")
@@ -508,9 +633,18 @@ def _normalize_narrative(parsed: dict, context: dict) -> DungeonNarrative:
 
 def generate_narrative(context: dict, provider: LLMProvider = "local") -> DungeonNarrative:
     logger.warning("Generating narrative with provider=%s", provider)
-
+    
     raw = _groq_chat(context) if provider == "api" else _ollama_chat(context)
-    parsed = _extract_json(raw)
+
+    try:
+        parsed = _extract_json(raw)
+    except json.JSONDecodeError:
+        if provider != "api":
+            raise
+
+        logger.warning("Groq returned invalid JSON, retrying compact JSON")
+        raw = _retry_groq_json(context)
+        parsed = _extract_json(raw)
 
     try:
         result = DungeonNarrative.model_validate(parsed)
@@ -525,11 +659,11 @@ def generate_narrative(context: dict, provider: LLMProvider = "local") -> Dungeo
             room.description = room.description.replace(phrase, "")
             room.map_label = room.map_label.replace(phrase, "")
 
-    expected_ids = {r["id"] for r in context["rooms"]}
+    expected_ids = set(_room_ids(context))
     result.rooms = [r for r in result.rooms if r.id in expected_ids]
 
     returned_ids = {r.id for r in result.rooms}
-    missing = [r["id"] for r in context["rooms"] if r["id"] not in returned_ids]
+    missing = [rid for rid in _room_ids(context) if rid not in returned_ids]
     if missing:
         result.rooms.extend(
             RoomNarrative(
