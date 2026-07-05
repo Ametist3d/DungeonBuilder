@@ -3,6 +3,7 @@ import { generateDungeon } from './api';
 import { renderDungeon } from './render/index';
 import type { DungeonNarrative, GenerateRequest, GenerateResponse, LLMProvider, Size } from './types';
 import { setupPanZoom } from './pan-zoom';
+import { setupMapOverlay } from './map-overlay';
 
 const svg = document.getElementById('canvas') as unknown as SVGSVGElement;
 const canvasWrap = document.getElementById('canvas-wrap') as HTMLDivElement;
@@ -41,9 +42,13 @@ const statSeed = document.getElementById('statSeed') as HTMLSpanElement;
 const narrativePanel = document.getElementById('narrativePanel') as HTMLDivElement;
 
 const panZoom = setupPanZoom(canvasWrap, svg);
+setupMapOverlay(canvasWrap);
 
 const DEFAULT_SCENARIO_NAME = 'Dungeon generator — version 0.1: rooms';
 const DEFAULT_SCENARIO_NARRATIVE = 'Generate a map, then add narrative.';
+
+const closedDoorPctRange = document.getElementById('closedDoorPctRange') as HTMLInputElement;
+const closedDoorPctVal = document.getElementById('closedDoorPctVal') as HTMLSpanElement;
 
 let currentDungeon: GenerateResponse | null = null;
 let currentNarrative: DungeonNarrative | null = null;
@@ -70,6 +75,7 @@ function buildRequest(seed: string): GenerateRequest {
     octagonPct: parseInt(octagonPctRange.value, 10),
     accentPct: parseInt(accentPctRange.value, 10),
     llmProvider: llmProviderSelect.value as LLMProvider,
+    closedDoorPct: parseInt(closedDoorPctRange.value, 10),
   };
 }
 
@@ -143,7 +149,7 @@ async function runGenerate(): Promise<void> {
     currentDungeon = result;
     currentNarrative = null;
 
-    renderDungeon(svg, result.rooms, result.corridors, result.entrance, result.exit);
+    renderDungeon(svg, result.rooms, result.corridors, result.entrance, result.exit, [], result.doors);
     panZoom.reset();
 
     statRooms.textContent = String(result.rooms.length);
@@ -177,6 +183,7 @@ async function runNarrative(): Promise<void> {
         currentDungeon.entrance,
         currentDungeon.exit,
         narrative.rooms,
+        currentDungeon.doors,
       );
 
       requestAnimationFrame(() => {
@@ -221,6 +228,10 @@ addNarrativeBtn.addEventListener('click', runNarrative);
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') runGenerate();
+});
+
+closedDoorPctRange.addEventListener('input', () => {
+  closedDoorPctVal.textContent = closedDoorPctRange.value;
 });
 
 seedInput.value = randomSeedString();

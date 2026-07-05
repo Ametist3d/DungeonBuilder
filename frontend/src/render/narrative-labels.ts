@@ -2,21 +2,21 @@ import type { Room, RoomNarrative } from '../types';
 import { NS, UNIT, type RenderContext } from './context';
 
 const TARGET_ASPECT = 1.5;
-const MIN_LABEL_W = 190;
-const MAX_LABEL_W = 430;
-const WIDTH_STEP = 18;
+const MIN_LABEL_W = 220;
+const MAX_LABEL_W = 520;
+const WIDTH_STEP = 20;
 
-const GAP = 20;
+const GAP = 22;
 const PAD_X = 14;
 const PAD_Y = 12;
-const LINE_H = 21;
+const LINE_H = 20;
 
-const TITLE_FONT_SIZE = 16;
-const BODY_FONT_SIZE = 16;
-const TITLE_CHAR_W = 8.8;
-const BODY_CHAR_W = 8.0;
+const TITLE_FONT_SIZE = 15;
+const BODY_FONT_SIZE = 14;
+const TITLE_CHAR_W = 8.4;
+const BODY_CHAR_W = 7.2;
 
-const MAX_BODY_CHARS = 260;
+const MAX_BODY_CHARS = 380;
 
 
 type Box = {
@@ -144,7 +144,7 @@ function wrapText(text: string, maxChars: number): string[] {
 }
 
 function labelBody(room: RoomNarrative): string {
-  return trimToWord(room.mapLabel?.trim() || room.description, MAX_BODY_CHARS);
+  return trimToWord(room.description || room.mapLabel || '', MAX_BODY_CHARS);
 }
 
 function buildLayout(room: RoomNarrative, wrapWidth: number): LabelLayout {

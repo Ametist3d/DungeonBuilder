@@ -1,10 +1,10 @@
-import type { Room, Corridor, Opening, RoomNarrative } from '../types';
+import type { Door, Room, Corridor, Opening, RoomNarrative } from '../types';
 import { renderNarrativeLabels } from './narrative-labels';
 import { renderNarrativeContent } from './narrative-content';
 import { buildRenderContext } from './context';
 import {
   buildInsetShadowFilter, buildHaloFilter, buildRubblePattern, buildAccentBlurFilter,
-  renderHalo, renderWallHatching, renderCompass, renderScaleBar,
+  renderHalo, renderWallHatching, renderScaleBar,
 } from './styling';
 import { renderCorridorFloors, renderRoomFloors, renderFloorGrid, renderRoomLabels } from './floors';
 import { renderDoors } from './doors';
@@ -16,6 +16,7 @@ export function renderDungeon(
   entrance: Opening | null = null,
   dungeonExit: Opening | null = null,
   roomNarratives: RoomNarrative[] = [],
+  doors: Door[] = [],
 ): Set<number> {
   svg.innerHTML = '';
   if (rooms.length === 0) return new Set<number>();
@@ -40,10 +41,11 @@ export function renderDungeon(
   renderFloorGrid(ctx);
   renderRoomLabels(ctx);
   renderWallHatching(ctx);
-  renderCompass(ctx);
   renderScaleBar(ctx);
-  renderDoors(ctx, entrance, dungeonExit);
+  renderDoors(ctx, entrance, dungeonExit, doors);
   renderNarrativeContent(ctx, roomNarratives);
 
-  return renderNarrativeLabels(ctx, roomNarratives);
+  const placedRoomIds = renderNarrativeLabels(ctx, roomNarratives);
+
+  return placedRoomIds;
 }

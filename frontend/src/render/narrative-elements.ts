@@ -85,7 +85,7 @@ function hideTooltip(): void {
 const SYMBOL_SIZE = 24;
 const SYMBOL_PREFIX = 'narrative-element-symbol';
 
-const SYMBOLS: Record<NarrativeElementKind, string> = {
+export const NARRATIVE_ELEMENT_SYMBOLS: Record<NarrativeElementKind, string> = {
   loot: `
     <path d="M-7,-3 L-3,-8 L5,-8 L9,-3 L1,8 Z" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/>
     <path d="M-7,-3 H9 M-3,-8 L1,8 M5,-8 L1,8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
@@ -155,7 +155,7 @@ const SYMBOLS: Record<NarrativeElementKind, string> = {
   `,
 };
 
-function markerId(kind: NarrativeElementKind): string {
+export function markerId(kind: NarrativeElementKind): string {
   return `${SYMBOL_PREFIX}-${kind}`;
 }
 
@@ -163,7 +163,7 @@ function appendSymbol(defs: SVGDefsElement, kind: NarrativeElementKind): void {
   const symbol = document.createElementNS(NS, 'symbol');
   symbol.setAttribute('id', markerId(kind));
   symbol.setAttribute('viewBox', '-12 -12 24 24');
-  symbol.innerHTML = SYMBOLS[kind];
+  symbol.innerHTML = NARRATIVE_ELEMENT_SYMBOLS[kind];
   defs.appendChild(symbol);
 }
 

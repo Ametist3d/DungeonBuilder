@@ -3,6 +3,10 @@ export type Size = 'small' | 'medium' | 'large';
 export type Shape = 'rect' | 'circle' | 'octagon';
 export type LLMProvider = 'local' | 'api';
 
+export type DoorState = 'open' | 'closed';
+export type DoorMaterial = 'wood' | 'iron' | 'stone' | 'bone' | 'arcane';
+export type DoorLock = 'none' | 'locked' | 'sealed' | 'magicSealed' | 'puzzleSealed';
+
 export interface Room {
   id: number;
   x: number;
@@ -26,6 +30,18 @@ export type NarrativeElementType =
   | 'hazard'
   | 'secret';
 
+export interface Door {
+  id: string;
+  parentId: number;
+  childId: number;
+  roomId: number;
+  otherRoomId: number;
+  state: DoorState;
+  material: DoorMaterial;
+  lock: DoorLock;
+  reason: string;
+}
+
 export interface NarrativeContent {
   type: NarrativeElementType | string;
   quantity: number;
@@ -41,6 +57,18 @@ export interface GenerateRequest {
   octagonPct: number;
   accentPct: number;
   llmProvider?: LLMProvider;
+  closedDoorPct: number;
+}
+
+export interface GenerateResponse {
+  seed: string;
+  target: number;
+  maxDepth: number;
+  rooms: Room[];
+  corridors: Corridor[];
+  entrance: Opening;
+  exit: Opening;
+  doors: Door[];
 }
 
 export interface Corridor {
@@ -53,16 +81,6 @@ export interface Corridor {
 export interface Opening {
   roomId: number;
   direction: Direction;
-}
-
-export interface GenerateResponse {
-  seed: string;
-  target: number;
-  maxDepth: number;
-  rooms: Room[];
-  corridors: Corridor[];
-  entrance: Opening;
-  exit: Opening;
 }
 
 export interface RoomNarrative {

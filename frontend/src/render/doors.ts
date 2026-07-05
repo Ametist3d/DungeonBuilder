@@ -1,8 +1,107 @@
-import type { Corridor, Room, Opening } from '../types';
+import type {Door, Room, Opening } from '../types';
 import { NS, UNIT, OPPOSITE, DIR_VECTOR, wallCenter, type RenderContext } from './context';
 
 const DOOR_INSET = 5; // px -- how far into the corridor the door glyph sits from the room wall
 const DOOR_THICKNESS = 6; // px -- how thick the door glyph is
+
+function doorKey(parentId: number, childId: number, roomId: number): string {
+  return `${parentId}-${childId}-${roomId}`;
+}
+
+function doorByRoomSide(doors: Door[]): Map<string, Door> {
+  return new Map(
+    doors.map((door) => [
+      door.id || doorKey(door.parentId, door.childId, door.roomId),
+      door,
+    ])
+  );
+}
+
+function findDoor(
+  doors: Map<string, Door>,
+  parentId: number,
+  childId: number,
+  roomId: number,
+): Door | null {
+  return doors.get(doorKey(parentId, childId, roomId)) || null;
+}
+
+function doorTitle(door: Door | null): string {
+  if (!door || door.state === 'open') return '';
+
+  const lock = door.lock === 'none' ? '' : `${door.lock} `;
+  return `${lock}${door.material} door${door.reason ? ` — ${door.reason}` : ''}`;
+}
+
+const DOOR_TOOLTIP_ID = 'door-tooltip';
+const DOOR_TOOLTIP_DELAY_MS = 35;
+
+let doorTooltipTimer: number | null = null;
+
+function getDoorTooltip(): HTMLDivElement {
+  let el = document.getElementById(DOOR_TOOLTIP_ID) as HTMLDivElement | null;
+
+  if (!el) {
+    el = document.createElement('div');
+    el.id = DOOR_TOOLTIP_ID;
+    el.className = 'door-tooltip';
+    document.body.appendChild(el);
+  }
+
+  return el;
+}
+
+function moveDoorTooltip(e: PointerEvent): void {
+  const el = getDoorTooltip();
+  const gap = 14;
+
+  el.style.left = `${e.clientX + gap}px`;
+  el.style.top = `${e.clientY + gap}px`;
+
+  const rect = el.getBoundingClientRect();
+
+  if (rect.right > window.innerWidth - 8) {
+    el.style.left = `${e.clientX - rect.width - gap}px`;
+  }
+
+  if (rect.bottom > window.innerHeight - 8) {
+    el.style.top = `${e.clientY - rect.height - gap}px`;
+  }
+}
+
+function showDoorTooltip(e: PointerEvent, text: string): void {
+  const content = text.trim();
+  if (!content) return;
+
+  if (doorTooltipTimer !== null) {
+    window.clearTimeout(doorTooltipTimer);
+  }
+
+  doorTooltipTimer = window.setTimeout(() => {
+    const el = getDoorTooltip();
+    el.textContent = content;
+    el.classList.add('visible');
+    moveDoorTooltip(e);
+  }, DOOR_TOOLTIP_DELAY_MS);
+}
+
+function hideDoorTooltip(): void {
+  if (doorTooltipTimer !== null) {
+    window.clearTimeout(doorTooltipTimer);
+    doorTooltipTimer = null;
+  }
+
+  getDoorTooltip().classList.remove('visible');
+}
+
+function bindDoorTooltip(el: SVGElement, door: Door | null): void {
+  const title = doorTitle(door);
+  if (!title) return;
+
+  el.addEventListener('pointerenter', (e) => showDoorTooltip(e, title));
+  el.addEventListener('pointermove', moveDoorTooltip);
+  el.addEventListener('pointerleave', hideDoorTooltip);
+}
 
 function drawDoor(
   ctx: RenderContext,
@@ -10,7 +109,7 @@ function drawDoor(
   gy: number,
   vertical: boolean,
   insetSign: number = 0,
-  closed = false,
+  door: Door | null = null,
 ) {
   const { svg, toPx } = ctx;
   const [wallPx, wallPy] = toPx(gx, gy);
@@ -40,6 +139,45 @@ function drawDoor(
   gap.setAttribute('class', 'door-gap');
   svg.appendChild(gap);
 
+
+
+  const closed = door?.state === 'closed';
+
+  if (closed) {
+      const bar = document.createElementNS(NS, 'line');
+
+      if (vertical) {
+        bar.setAttribute('x1', String(glyphPx));
+        bar.setAttribute('y1', String(glyphPy + DOOR_THICKNESS));
+        bar.setAttribute('x2', String(glyphPx));
+        bar.setAttribute('y2', String(glyphPy + UNIT - DOOR_THICKNESS));
+      } else {
+        bar.setAttribute('x1', String(glyphPx + DOOR_THICKNESS));
+        bar.setAttribute('y1', String(glyphPy));
+        bar.setAttribute('x2', String(glyphPx + UNIT - DOOR_THICKNESS));
+        bar.setAttribute('y2', String(glyphPy));
+      }
+
+      bar.setAttribute(
+        'class',
+        `door-closed-bar door-${door.material} door-${door.lock}`,
+      );
+
+      bindDoorTooltip(bar, door);
+
+      svg.appendChild(bar);
+
+      if (door.lock === 'magicSealed' || door.lock === 'puzzleSealed') {
+        const seal = document.createElementNS(NS, 'circle');
+        seal.setAttribute('cx', String(glyphPx + (vertical ? 0 : UNIT / 2)));
+        seal.setAttribute('cy', String(glyphPy + (vertical ? UNIT / 2 : 0)));
+        seal.setAttribute('r', '5');
+        seal.setAttribute('class', `door-seal door-${door.lock}`);
+        bindDoorTooltip(seal, door);
+        svg.appendChild(seal);
+      }
+    }
+
   const frame = document.createElementNS(NS, 'rect');
   if (vertical) {
     frame.setAttribute('x', String(glyphPx - DOOR_THICKNESS));
@@ -54,25 +192,6 @@ function drawDoor(
   }
   frame.setAttribute('class', 'door-frame');
   svg.appendChild(frame);
-
-  if (closed) {
-    const bar = document.createElementNS(NS, 'line');
-
-    if (vertical) {
-      bar.setAttribute('x1', String(glyphPx));
-      bar.setAttribute('y1', String(glyphPy + 3));
-      bar.setAttribute('x2', String(glyphPx));
-      bar.setAttribute('y2', String(glyphPy + UNIT - 3));
-    } else {
-      bar.setAttribute('x1', String(glyphPx + 3));
-      bar.setAttribute('y1', String(glyphPy));
-      bar.setAttribute('x2', String(glyphPx + UNIT - 3));
-      bar.setAttribute('y2', String(glyphPy));
-    }
-
-    bar.setAttribute('class', 'door-closed-bar');
-    svg.appendChild(bar);
-  }
 
   // const makeTick = (offset: number) => {
   //   const t = document.createElementNS(NS, 'line');
@@ -94,31 +213,19 @@ function drawDoor(
   // makeTick(2);
 }
 
-// function drawJunctionPatch(ctx: RenderContext, gx: number, gy: number) {
-//   const { svg, toPx } = ctx;
-//   const [px, py] = toPx(gx, gy);
-//   const patch = document.createElementNS(NS, 'rect');
-//   patch.setAttribute('x', String(px - UNIT / 2));
-//   patch.setAttribute('y', String(py - UNIT / 2));
-//   patch.setAttribute('width', String(UNIT));
-//   patch.setAttribute('height', String(UNIT));
-//   patch.setAttribute('class', 'door-gap');
-//   svg.appendChild(patch);
-// }
-
 function drawCorridorDoor(
   ctx: RenderContext,
   p0: [number, number],
   p1: [number, number],
-  closed = false,
+  door: Door | null = null,
 ) {
   const [x0, y0] = p0;
   const [x1, y1] = p1;
 
   if (y0 === y1) {
-    drawDoor(ctx, x0, y0 - 0.5, true, x1 > x0 ? 1 : -1, closed);
+    drawDoor(ctx, x0, y0 - 0.5, true, x1 > x0 ? 1 : -1, door);
   } else {
-    drawDoor(ctx, x0 - 0.5, y0, false, y1 > y0 ? 1 : -1, closed);
+    drawDoor(ctx, x0 - 0.5, y0, false, y1 > y0 ? 1 : -1, door);
   }
 }
 
@@ -167,66 +274,33 @@ function drawOpening(ctx: RenderContext, room: Room, dir: string, label: string,
   svg.appendChild(text);
 }
 
-function closedRoomSideDoors(rooms: Room[], corridors: Corridor[]): Set<string> {
-  const byId = new Map(rooms.map((room) => [room.id, room]));
-  const incomingByRoom = new Map<number, Corridor[]>();
-
-  for (const corridor of corridors) {
-    const from = byId.get(corridor.parentId);
-    const to = byId.get(corridor.childId);
-    if (!from || !to) continue;
-
-    if (from.depth < to.depth) {
-      const list = incomingByRoom.get(to.id) || [];
-      list.push(corridor);
-      incomingByRoom.set(to.id, list);
-    }
-
-    if (to.depth < from.depth) {
-      const list = incomingByRoom.get(from.id) || [];
-      list.push(corridor);
-      incomingByRoom.set(from.id, list);
-    }
-  }
-
-  const closed = new Set<string>();
-
-  for (const [roomId, incoming] of incomingByRoom) {
-    if (incoming.length <= 1) continue;
-
-    for (const corridor of incoming) {
-      closed.add(`${corridor.parentId}-${corridor.childId}-${roomId}`);
-    }
-  }
-
-  return closed;
-}
-
-function isClosedAtRoom(corridor: Corridor, roomId: number, closed: Set<string>): boolean {
-  return closed.has(`${corridor.parentId}-${corridor.childId}-${roomId}`);
-}
-
 export function renderDoors(
   ctx: RenderContext,
   entrance: Opening | null,
   dungeonExit: Opening | null,
+  doors: Door[] = [],
 ): void {
   const { rooms, corridors, byId, corridorPairs } = ctx;
-  const closedDoors = closedRoomSideDoors(rooms, corridors);
+  const doorMap = doorByRoomSide(doors);
 
   // every corridor -- tree-grown or a leaf-loop bridge -- gets doors at both mouths
   for (const c of corridors) {
     const pts = c.points;
 
     if (!c.branchesFromCorridor) {
-      drawCorridorDoor(ctx, pts[0], pts[1], isClosedAtRoom(c, c.parentId, closedDoors));
+      drawCorridorDoor(
+        ctx,
+        pts[0],
+        pts[1],
+        findDoor(doorMap, c.parentId, c.childId, c.parentId),
+      );
     }
 
     drawCorridorDoor(
       ctx,
       pts[pts.length - 1],
       pts[pts.length - 2],
-      isClosedAtRoom(c, c.childId, closedDoors),
+      findDoor(doorMap, c.parentId, c.childId, c.childId),
     );
   }
 
@@ -240,11 +314,11 @@ export function renderDoors(
     if (dir === 'E' || dir === 'W') {
       const lo = Math.max(parent.y, r.y);
       const hi = Math.min(parent.y + parent.h, r.y + r.h);
-      drawDoor(ctx, dir === 'E' ? parent.x + parent.w : parent.x, Math.floor((lo + hi) / 2), true, 0, false);
+      drawDoor(ctx, dir === 'E' ? parent.x + parent.w : parent.x, Math.floor((lo + hi) / 2), true, 0, null);
     } else {
       const lo = Math.max(parent.x, r.x);
       const hi = Math.min(parent.x + parent.w, r.x + r.w);
-      drawDoor(ctx, Math.floor((lo + hi) / 2), dir === 'S' ? parent.y + parent.h : parent.y, false, 0, false);
+      drawDoor(ctx, Math.floor((lo + hi) / 2), dir === 'S' ? parent.y + parent.h : parent.y, false, 0, null);
     }
   }
 

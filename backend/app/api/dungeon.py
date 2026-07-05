@@ -5,7 +5,8 @@ from fastapi import APIRouter
 
 from ..generator.rng import make_rng
 from ..generator.pipeline import SIZE_TARGETS, generate_dungeon
-from ..models import Corridor, GenerateRequest, GenerateResponse, Opening, Room
+from ..generator.entities import build_doors
+from ..models import Corridor, Door, GenerateRequest, GenerateResponse, Opening, Room
 from ..narrative.context import build_narrative_context
 from ..narrative.llm import generate_narrative
 
@@ -25,8 +26,16 @@ def generate(req: GenerateRequest) -> GenerateResponse:
         shape_weights=(req.rect_pct, req.circle_pct, req.octagon_pct),
         accent_pct=req.accent_pct,
     )
-    max_depth = max((r.depth for r in rooms), default=0)
 
+    max_depth = max((r.depth for r in rooms), default=0)
+    
+    doors = build_doors(
+        rooms,
+        corridors,
+        entrance,
+        seed,
+        req.closed_door_pct,
+    )
     return GenerateResponse(
         seed=seed,
         target=target,
@@ -48,12 +57,26 @@ def generate(req: GenerateRequest) -> GenerateResponse:
         ],
         entrance=Opening(room_id=entrance.room_id, direction=entrance.direction),
         exit=Opening(room_id=exit_opening.room_id, direction=exit_opening.direction),
+        doors=[
+            Door(
+                id=door.id,
+                parent_id=door.parent_id,
+                child_id=door.child_id,
+                room_id=door.room_id,
+                other_room_id=door.other_room_id,
+                state=door.state,
+                material=door.material,
+                lock=door.lock,
+                reason=door.reason,
+            )
+            for door in doors
+        ],
     )
 
 @router.post("/narrate")
 def narrate(req: GenerateRequest) -> Any:
     '''Generate a dungeon and return a narrative description of it.'''
-    
+
     seed = req.seed or secrets.token_hex(4)
 
     lo, hi = SIZE_TARGETS[req.size]
@@ -67,6 +90,13 @@ def narrate(req: GenerateRequest) -> Any:
         shape_weights=(req.rect_pct, req.circle_pct, req.octagon_pct),
         accent_pct=req.accent_pct,
     )
+    doors = build_doors(
+        rooms,
+        corridors,
+        entrance,
+        seed,
+        req.closed_door_pct,
+    )
 
-    context = build_narrative_context(rooms, corridors, entrance, exit_opening)
+    context = build_narrative_context(rooms, corridors, entrance, exit_opening, doors)
     return generate_narrative(context, req.llm_provider)

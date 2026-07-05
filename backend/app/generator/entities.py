@@ -2,15 +2,33 @@ from __future__ import annotations
 
 import random
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Optional, Literal
+from .rng import make_rng
+
+# --- door classes ---
+
+DoorState = Literal["open", "closed"]
+DoorMaterial = Literal["wood", "iron", "stone", "bone", "arcane"]
+DoorLock = Literal["none", "locked", "sealed", "magicSealed", "puzzleSealed"]
 
 # --- directions ---
 
 OPPOSITE = {"N": "S", "S": "N", "E": "W", "W": "E"}
 PERPENDICULAR = {"N": ["E", "W"], "S": ["E", "W"], "E": ["N", "S"], "W": ["N", "S"]}
 
-
 # --- dataclasses ---
+
+@dataclass(frozen=True)
+class Door:
+    id: str
+    parent_id: int
+    child_id: int
+    room_id: int
+    other_room_id: int
+    state: DoorState = "open"
+    material: DoorMaterial = "wood"
+    lock: DoorLock = "none"
+    reason: str = ""
 
 @dataclass
 class RoomNode:
@@ -106,3 +124,133 @@ def pick_shape(rng: random.Random, weights: tuple[float, float, float]) -> str:
         if roll <= upto:
             return shape
     return "rect"
+
+def _door_id(parent_id: int, child_id: int, room_id: int) -> str:
+    return f"{parent_id}-{child_id}-{room_id}"
+
+
+def _closed_style(seed: str, door_key: str) -> tuple[DoorMaterial, DoorLock, str]:
+    rng = make_rng(f"{seed}#door-style#{door_key}")
+
+    styles: list[tuple[DoorMaterial, DoorLock, str]] = [
+        ("wood", "locked", "locked wooden door"),
+        ("iron", "locked", "locked iron-banded door"),
+        ("stone", "sealed", "sealed stone door"),
+        ("arcane", "magicSealed", "magic-sealed door"),
+        ("arcane", "puzzleSealed", "puzzle-sealed arcane door"),
+        ("bone", "sealed", "sealed bone-inlaid door"),
+    ]
+
+    return rng.choice(styles)
+
+
+def build_doors(
+    rooms: list[RoomNode],
+    corridors: list[Corridor],
+    entrance: Opening,
+    seed: str,
+    closed_door_pct: int,
+) -> list[Door]:
+    pct = max(0, min(100, int(closed_door_pct)))
+    by_id = {room.id: room for room in rooms}
+
+    doors: list[Door] = []
+    incoming_by_room: dict[int, list[str]] = {}
+
+    for corridor in corridors:
+        parent = by_id.get(corridor.parent_id)
+        child = by_id.get(corridor.child_id)
+
+        if not parent or not child:
+            continue
+
+        if not corridor.branches_from_corridor:
+            parent_door = Door(
+                id=_door_id(corridor.parent_id, corridor.child_id, corridor.parent_id),
+                parent_id=corridor.parent_id,
+                child_id=corridor.child_id,
+                room_id=corridor.parent_id,
+                other_room_id=corridor.child_id,
+            )
+            doors.append(parent_door)
+
+        child_door = Door(
+            id=_door_id(corridor.parent_id, corridor.child_id, corridor.child_id),
+            parent_id=corridor.parent_id,
+            child_id=corridor.child_id,
+            room_id=corridor.child_id,
+            other_room_id=corridor.parent_id,
+        )
+        doors.append(child_door)
+
+        if parent.depth < child.depth and child.id != entrance.room_id:
+            incoming_by_room.setdefault(child.id, []).append(child_door.id)
+
+        if child.depth < parent.depth and parent.id != entrance.room_id:
+            incoming_by_room.setdefault(parent.id, []).append(
+                _door_id(corridor.parent_id, corridor.child_id, corridor.parent_id)
+            )
+
+    if pct <= 0 or not doors:
+        return doors
+
+    preferred_closed_ids = {
+        door_id
+        for door_ids in incoming_by_room.values()
+        if len(door_ids) > 1
+        for door_id in door_ids
+    }
+
+    rng = make_rng(f"{seed}#closed-doors")
+
+    def corridor_key(door: Door) -> tuple[int, int]:
+            return door.parent_id, door.child_id
+
+    preferred = [door for door in doors if door.id in preferred_closed_ids]
+    normal = [door for door in doors if door.id not in preferred_closed_ids]
+
+    rng.shuffle(preferred)
+    rng.shuffle(normal)
+
+    corridor_count = len({corridor_key(door) for door in doors})
+    closed_count = max(1, round(corridor_count * pct / 100))
+
+    closed_ids: set[str] = set()
+    closed_corridors: set[tuple[int, int]] = set()
+
+    for door in preferred + normal:
+        key = corridor_key(door)
+
+        if key in closed_corridors:
+            continue
+
+        closed_ids.add(door.id)
+        closed_corridors.add(key)
+
+        if len(closed_ids) >= closed_count:
+            break
+
+    result: list[Door] = []
+
+    for door in doors:
+        if door.id not in closed_ids:
+            result.append(door)
+            continue
+
+        material, lock, reason = _closed_style(seed, door.id)
+
+        result.append(
+            Door(
+                id=door.id,
+                parent_id=door.parent_id,
+                child_id=door.child_id,
+                room_id=door.room_id,
+                other_room_id=door.other_room_id,
+                state="closed",
+                material=material,
+                lock=lock,
+                reason=reason,
+            )
+        )
+
+    return result

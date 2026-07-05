@@ -6,6 +6,22 @@ Direction = Literal["N", "E", "S", "W"]
 Size = Literal["small", "medium", "large"]
 Shape = Literal["rect", "circle", "octagon"]
 LLMProvider = Literal["local", "api"]
+DoorState = Literal["open", "closed"]
+DoorMaterial = Literal["wood", "iron", "stone", "bone", "arcane"]
+DoorLock = Literal["none", "locked",  "sealed", "magicSealed", "puzzleSealed"]
+
+class Door(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    id: str
+    parent_id: int = Field(alias="parentId")
+    child_id: int = Field(alias="childId")
+    room_id: int = Field(alias="roomId")
+    other_room_id: int = Field(alias="otherRoomId")
+    state: DoorState = "open"
+    material: DoorMaterial = "wood"
+    lock: DoorLock = "none"
+    reason: str = ""
 
 class Room(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
@@ -29,6 +45,16 @@ class Opening(BaseModel):
     room_id: int = Field(alias="roomId")
     direction: Direction
 
+class Corridor(BaseModel):
+    """Centerline waypoints of a corridor, from the parent room's wall to the child room's wall."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    parent_id: int = Field(alias="parentId")
+    child_id: int = Field(alias="childId")
+    points: list[list[float]]
+    branches_from_corridor: bool = Field(False, alias="branchesFromCorridor")
+
 class GenerateRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -40,17 +66,7 @@ class GenerateRequest(BaseModel):
     octagon_pct: int = Field(20, ge=0, le=100, alias="octagonPct")
     accent_pct: int = Field(15, ge=0, le=100, alias="accentPct")
     llm_provider: LLMProvider = Field("local", alias="llmProvider")
-
-
-class Corridor(BaseModel):
-    """Centerline waypoints of a corridor, from the parent room's wall to the child room's wall."""
-
-    model_config = ConfigDict(populate_by_name=True)
-
-    parent_id: int = Field(alias="parentId")
-    child_id: int = Field(alias="childId")
-    points: list[list[float]]
-    branches_from_corridor: bool = Field(False, alias="branchesFromCorridor")
+    closed_door_pct: int = Field(45, ge=0, le=100, alias="closedDoorPct")
 
 
 class GenerateResponse(BaseModel):
@@ -63,4 +79,5 @@ class GenerateResponse(BaseModel):
     corridors: list[Corridor]
     entrance: Opening
     exit: Opening
+    doors: list[Door] = Field(default_factory=list)
 
