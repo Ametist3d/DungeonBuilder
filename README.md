@@ -1,59 +1,185 @@
-# Dungeon generator
+# DungeonBuilder
 
-Procedural dungeon generator, split into a Python backend (generation logic)
-and a TypeScript frontend (rendering + controls).
+Procedural dungeon map generator with a small FastAPI backend and a Vite/TypeScript SVG frontend.
 
-## Project layout
+It generates dungeon layouts from a seed, renders rooms/corridors/doors/entrance/exit, and can add AI-generated room narratives as map labels or side-panel notes.
 
-```
-backend/
-  requirements.txt
-  app/
-    main.py              FastAPI app, CORS, route registration
-    models.py             Pydantic request/response schemas
-    generator/
-      rng.py               deterministic seeded RNG (string seed -> Random)
-      rooms.py             room-tree generation algorithm (stage 1)
-    api/
-      dungeon.py           POST /api/dungeon/generate
+## Live test
 
-frontend/
-  index.html
-  src/
-    main.ts                wires up controls, calls the API, triggers render
-    api.ts                  typed fetch wrapper
-    types.ts                shared types matching the backend's JSON contract
-    render.ts               SVG rendering (rooms + door gaps)
-    style.css
+Currently deployed here:
+
+```txt
+http://46.225.185.220:8080
 ```
 
-## Running it
+## Features
 
-**Backend** (from `backend/`):
+* Seeded dungeon generation
+* Small / medium / large map sizes
+* Adjustable dungeon linearity
+* Room shape mix: rectangular, circular, octagonal
+* Accent-room probability
+* SVG map rendering
+* Pan and zoom support
+* Doors, corridors, entrance and exit markers
+* Optional narrative generation
+* Narrative providers:
+
+  * Local Ollama
+  * Groq API
+* Adaptive map labels with side-panel fallback when labels do not fit
+
+## Project structure
+
+```txt
+DungeonBuilder/
+  backend/          FastAPI dungeon generator + narrative API
+  frontend/         Vite/TypeScript SVG UI
+  docker-compose.yml
+  .env
 ```
-python3 -m venv .venv
-source .venv/bin/activate          # .venv\Scripts\activate on Windows
+
+## API
+
+Backend health check:
+
+```txt
+GET /health
+```
+
+Generate dungeon:
+
+```txt
+POST /api/dungeon/generate
+```
+
+Generate dungeon narrative:
+
+```txt
+POST /api/dungeon/narrate
+```
+
+Example request:
+
+```json
+{
+  "size": "medium",
+  "symmetryBreak": 30,
+  "rectPct": 60,
+  "circlePct": 20,
+  "octagonPct": 20,
+  "accentPct": 15,
+  "llmProvider": "api"
+}
+```
+
+## Local setup
+
+### Backend
+
+```bash
+cd backend
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
+uvicorn app.main:app --host 0.0.0.0 --port 8088
 ```
-API docs at http://localhost:8000/docs once it's running.
 
-**Frontend** (from `frontend/`, in a separate terminal):
+On Windows:
+
+```bash
+cd backend
+python -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8088
 ```
+
+### Frontend
+
+```bash
+cd frontend
 npm install
 npm run dev
 ```
-Open http://localhost:5175 — the Vite dev server proxies `/api/*` to the
-backend on port 8000 (see `vite.config.ts`), so both need to be running.
 
-`npm run typecheck` runs strict TypeScript checking without building.
-`npm run build` produces a static `dist/` you can serve from anywhere —
-at that point you'd either point it at a deployed backend URL or serve
-both from the same origin.
+Default local frontend:
 
-## Status
+```txt
+http://localhost:5174
+```
 
-Stage 1 only: seeded symmetric room-tree generation, no loops/corridors yet,
-no doors beyond a placeholder gap in the shared wall, no hand-drawn rendering.
-See the `app/generator/rooms.py` docstring-level comments for where stage 2
-(loops & corridors) will plug in.
+## Environment
+
+Create `.env` in the project root:
+
+```env
+GROQ_API_KEY=
+GROQ_MODEL=llama-3.3-70b-versatile
+
+OLLAMA_BASE_URL=http://host.docker.internal:11434
+OLLAMA_MODEL=gemma4:12b
+
+BACKEND_CORS_ORIGINS=http://46.225.185.220
+```
+
+For Groq narrative generation, set `GROQ_API_KEY`.
+
+For local Ollama narrative generation, make sure Ollama is running and the selected model is available.
+
+## Docker deployment
+
+Build and start:
+
+```bash
+docker compose up -d --build
+```
+
+Check containers:
+
+```bash
+docker compose ps
+```
+
+Check backend through Nginx:
+
+```bash
+curl http://127.0.0.1/health
+```
+
+Update deployment:
+
+```bash
+git pull
+docker compose up -d --build
+docker image prune -f
+```
+
+## VPS notes
+
+The app is deployed as a Docker Compose stack:
+
+* `frontend` serves the built Vite app through Nginx
+* `backend` runs FastAPI on port `8088`
+* Nginx proxies `/api/*` requests to the backend
+* Public access is exposed through port `80` or optional fallback port `8080`
+
+If port `80` is already used, either stop the old service/container or map the frontend as:
+
+```yaml
+ports:
+  - "8080:80"
+```
+
+
+## Current status
+
+The project is usable as a browser-based dungeon generator and narrative helper.
+
+Main tested flow:
+
+1. Open the deployed URL
+2. Generate a dungeon
+3. Adjust size / room-shape probabilities / linearity / accent chance
+4. Add narrative
+5. Review room labels on the map or in the side panel

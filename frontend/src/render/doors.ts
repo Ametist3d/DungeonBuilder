@@ -1,9 +1,17 @@
-import type { Room, Opening } from '../types';
+import type { Corridor, Room, Opening } from '../types';
 import { NS, UNIT, OPPOSITE, DIR_VECTOR, wallCenter, type RenderContext } from './context';
 
 const DOOR_INSET = 5; // px -- how far into the corridor the door glyph sits from the room wall
 const DOOR_THICKNESS = 6; // px -- how thick the door glyph is
-function drawDoor(ctx: RenderContext, gx: number, gy: number, vertical: boolean, insetSign: number = 0) {
+
+function drawDoor(
+  ctx: RenderContext,
+  gx: number,
+  gy: number,
+  vertical: boolean,
+  insetSign: number = 0,
+  closed = false,
+) {
   const { svg, toPx } = ctx;
   const [wallPx, wallPy] = toPx(gx, gy);
   const glyphPx = vertical ? wallPx + insetSign * DOOR_INSET : wallPx;
@@ -47,6 +55,25 @@ function drawDoor(ctx: RenderContext, gx: number, gy: number, vertical: boolean,
   frame.setAttribute('class', 'door-frame');
   svg.appendChild(frame);
 
+  if (closed) {
+    const bar = document.createElementNS(NS, 'line');
+
+    if (vertical) {
+      bar.setAttribute('x1', String(glyphPx));
+      bar.setAttribute('y1', String(glyphPy + 3));
+      bar.setAttribute('x2', String(glyphPx));
+      bar.setAttribute('y2', String(glyphPy + UNIT - 3));
+    } else {
+      bar.setAttribute('x1', String(glyphPx + 3));
+      bar.setAttribute('y1', String(glyphPy));
+      bar.setAttribute('x2', String(glyphPx + UNIT - 3));
+      bar.setAttribute('y2', String(glyphPy));
+    }
+
+    bar.setAttribute('class', 'door-closed-bar');
+    svg.appendChild(bar);
+  }
+
   // const makeTick = (offset: number) => {
   //   const t = document.createElementNS(NS, 'line');
   //   if (vertical) {
@@ -79,13 +106,19 @@ function drawDoor(ctx: RenderContext, gx: number, gy: number, vertical: boolean,
 //   svg.appendChild(patch);
 // }
 
-function drawCorridorDoor(ctx: RenderContext, p0: [number, number], p1: [number, number]) {
+function drawCorridorDoor(
+  ctx: RenderContext,
+  p0: [number, number],
+  p1: [number, number],
+  closed = false,
+) {
   const [x0, y0] = p0;
   const [x1, y1] = p1;
+
   if (y0 === y1) {
-    drawDoor(ctx, x0, y0 - 0.5, true, x1 > x0 ? 1 : -1);   // travel is E/W -- pierces a vertical wall
+    drawDoor(ctx, x0, y0 - 0.5, true, x1 > x0 ? 1 : -1, closed);
   } else {
-    drawDoor(ctx, x0 - 0.5, y0, false, y1 > y0 ? 1 : -1);  // travel is N/S -- pierces a horizontal wall
+    drawDoor(ctx, x0 - 0.5, y0, false, y1 > y0 ? 1 : -1, closed);
   }
 }
 
@@ -134,20 +167,67 @@ function drawOpening(ctx: RenderContext, room: Room, dir: string, label: string,
   svg.appendChild(text);
 }
 
+function closedRoomSideDoors(rooms: Room[], corridors: Corridor[]): Set<string> {
+  const byId = new Map(rooms.map((room) => [room.id, room]));
+  const incomingByRoom = new Map<number, Corridor[]>();
+
+  for (const corridor of corridors) {
+    const from = byId.get(corridor.parentId);
+    const to = byId.get(corridor.childId);
+    if (!from || !to) continue;
+
+    if (from.depth < to.depth) {
+      const list = incomingByRoom.get(to.id) || [];
+      list.push(corridor);
+      incomingByRoom.set(to.id, list);
+    }
+
+    if (to.depth < from.depth) {
+      const list = incomingByRoom.get(from.id) || [];
+      list.push(corridor);
+      incomingByRoom.set(from.id, list);
+    }
+  }
+
+  const closed = new Set<string>();
+
+  for (const [roomId, incoming] of incomingByRoom) {
+    if (incoming.length <= 1) continue;
+
+    for (const corridor of incoming) {
+      closed.add(`${corridor.parentId}-${corridor.childId}-${roomId}`);
+    }
+  }
+
+  return closed;
+}
+
+function isClosedAtRoom(corridor: Corridor, roomId: number, closed: Set<string>): boolean {
+  return closed.has(`${corridor.parentId}-${corridor.childId}-${roomId}`);
+}
+
 export function renderDoors(
   ctx: RenderContext,
   entrance: Opening | null,
   dungeonExit: Opening | null,
 ): void {
   const { rooms, corridors, byId, corridorPairs } = ctx;
+  const closedDoors = closedRoomSideDoors(rooms, corridors);
 
   // every corridor -- tree-grown or a leaf-loop bridge -- gets doors at both mouths
   for (const c of corridors) {
     const pts = c.points;
+
     if (!c.branchesFromCorridor) {
-      drawCorridorDoor(ctx, pts[0], pts[1]);
+      drawCorridorDoor(ctx, pts[0], pts[1], isClosedAtRoom(c, c.parentId, closedDoors));
     }
-    drawCorridorDoor(ctx, pts[pts.length - 1], pts[pts.length - 2]);
+
+    drawCorridorDoor(
+      ctx,
+      pts[pts.length - 1],
+      pts[pts.length - 2],
+      isClosedAtRoom(c, c.childId, closedDoors),
+    );
   }
 
   // rooms directly flush against their tree parent (no corridor) get one door each
@@ -160,11 +240,11 @@ export function renderDoors(
     if (dir === 'E' || dir === 'W') {
       const lo = Math.max(parent.y, r.y);
       const hi = Math.min(parent.y + parent.h, r.y + r.h);
-      drawDoor(ctx, dir === 'E' ? parent.x + parent.w : parent.x, Math.floor((lo + hi) / 2), true);
+      drawDoor(ctx, dir === 'E' ? parent.x + parent.w : parent.x, Math.floor((lo + hi) / 2), true, 0, false);
     } else {
       const lo = Math.max(parent.x, r.x);
       const hi = Math.min(parent.x + parent.w, r.x + r.w);
-      drawDoor(ctx, Math.floor((lo + hi) / 2), dir === 'S' ? parent.y + parent.h : parent.y, false);
+      drawDoor(ctx, Math.floor((lo + hi) / 2), dir === 'S' ? parent.y + parent.h : parent.y, false, 0, false);
     }
   }
 

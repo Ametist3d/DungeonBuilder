@@ -16,6 +16,22 @@ export interface Room {
   accent: boolean
 }
 
+export type NarrativeElementType =
+  | 'loot'
+  | 'enemy'
+  | 'trap'
+  | 'npc'
+  | 'clue'
+  | 'ritualObject'
+  | 'hazard'
+  | 'secret';
+
+export interface NarrativeContent {
+  type: NarrativeElementType | string;
+  quantity: number;
+  description?: string;
+}
+
 export interface GenerateRequest {
   seed?: string;
   size: Size;
@@ -54,6 +70,7 @@ export interface RoomNarrative {
   label: string;
   mapLabel?: string;
   description: string;
+  content?: NarrativeContent[];
 }
 
 export interface DungeonNarrative {

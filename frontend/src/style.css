@@ -463,3 +463,41 @@ text.room-label {
   fill: var(--text);
   font-weight: 700;
 }
+
+.narrative-element-marker {
+  pointer-events: auto;
+  cursor: help;
+}
+
+.narrative-element-marker circle {
+  filter: drop-shadow(1px 1px 0 var(--shadow-color));
+}
+
+.narrative-element-tooltip {
+  position: fixed;
+  z-index: 1000;
+  max-width: 260px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel) 96%, black 4%);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+  box-shadow: 3px 3px 0 color-mix(in srgb, var(--shadow-color) 55%, transparent);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(3px);
+  transition: opacity 60ms ease, transform 60ms ease;
+}
+
+.narrative-element-tooltip.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.door-closed-bar {
+  stroke: var(--accent);
+  stroke-width: 12;
+  stroke-linecap: square;
+}

@@ -43,18 +43,68 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 GROQ_CLIENT = Groq(api_key=GROQ_API_KEY) if GROQ_API_KEY else None
 
-MAX_MAP_LABEL_CHARS = 160
-MAX_DESCRIPTION_CHARS = 320
+MAX_MAP_LABEL_CHARS = 220
+MAX_DESCRIPTION_CHARS = 420
+
+CONTENT_TYPES = ("loot", "enemy", "trap", "npc", "clue", "ritualObject", "hazard", "secret")
+
+CONTENT_TYPE_ALIASES = {
+    "loot": "loot",
+    "treasure": "loot",
+    "enemy": "enemy",
+    "monster": "enemy",
+    "creature": "enemy",
+    "trap": "trap",
+    "npc": "npc",
+    "character": "npc",
+    "nonplayercharacter": "npc",
+    "clue": "clue",
+    "hint": "clue",
+    "ritualobject": "ritualObject",
+    "ritual_object": "ritualObject",
+    "ritual-object": "ritualObject",
+    "ritual": "ritualObject",
+    "artifact": "ritualObject",
+    "relic": "ritualObject",
+    "hazard": "hazard",
+    "danger": "hazard",
+    "secret": "secret",
+    "hidden": "secret",
+}
 
 SYSTEM_PROMPT = """You are writing content for a fantasy tabletop dungeon crawl.
-You'll receive a JSON description of the dungeon's room graph: shapes, sizes,
-depth from the entrance, and how rooms connect (tree corridors, loop-closing
-corridors, and branches off other corridors). Use the topology to guide tone:
-hub rooms (3+ connections) work well as junctions or social spaces; dead ends
-suit secrets, treasure, or a final confrontation; rooms on the main path are
-what most parties will see, branch rooms are optional detours. Keep each
-room description to 1-3 sentences of evocative, GM-readable boxed text."""
 
+Step 1:
+You'll receive a JSON description of the dungeon's room graph: shapes, sizes,
+depth from the entrance, and how rooms connect: tree corridors, loop-closing
+corridors, and branches off other corridors.
+
+Step 2:
+Create a fantasy tabletop DnD scenario based on the dungeon's room graph.
+The scenario should have an intro, a main part with story twists, a climax,
+and a few possible unexpected endings.
+
+Step 3:
+Based on the scenario from Step 2, create room descriptions. Use the topology
+to guide tone: hub rooms with 3+ connections work well as junctions, social
+spaces, or decision points; dead ends suit secrets, treasure, traps, prisoners,
+or a final confrontation; rooms on the main path are what most parties will see;
+branch rooms are optional detours.
+
+Each room description must contain one cornerstone narrative element such as
+loot, enemy, trap, NPC, clue, ritual object, environmental hazard, or secret.
+That element must align with the scenario.
+
+Keep each room description to 1-3 sentences of evocative, GM-readable boxed text.
+Output only valid JSON when asked."""
+
+class NarrativeContent(BaseModel):
+    type: str = Field(description=f"One of: {', '.join(CONTENT_TYPES)}")
+    quantity: int = Field(1, ge=1, le=3)
+    description: str = Field(
+        "",
+        description="Brief description and purpose of this element, aligned with scenario lore",
+    )
 
 class RoomNarrative(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
@@ -67,7 +117,10 @@ class RoomNarrative(BaseModel):
         description=f"Short map callout text narrative related to map label and story, max {MAX_MAP_LABEL_CHARS} characters, no line breaks",
     )
     description: str = Field(description="1-2 sentence read-aloud description")
-
+    content: list[NarrativeContent] = Field(
+        default_factory=list,
+        description="Narrative elements placed in this room, each with type and quantity 1-3",
+    )
 
 class DungeonNarrative(BaseModel):
     title: str
@@ -109,37 +162,69 @@ def _extract_json(text: str) -> dict:
 
         logger.error("Non-JSON LLM response preview: %s", _preview(original))
         raise RuntimeError(f"LLM returned non-JSON response: {_preview(original)}") from exc
-    
+
 
 def _ollama_chat(context: dict) -> str:
     room_ids = [r["id"] for r in context["rooms"]]
 
     prompt = f"""
-Return valid JSON matching this exact schema:
+Use the dungeon graph below to create a coherent fantasy tabletop DnD scenario.
+
+Plan the scenario internally:
+- intro / hook
+- main conflict
+- story twists
+- climax
+- a few possible unexpected endings
+- how each room supports that scenario
+
+Then return valid JSON matching this exact schema:
 
 {{
   "title": "short dungeon title",
-  "premise": "2-4 sentence dungeon hook/backstory",
+  "premise": "compact scenario summary with intro, main conflict, twists, climax, and possible endings",
   "rooms": [
     {{
       "id": 0,
       "label": "3-5 word room name",
-      "mapLabel": "short narrative related to map label and story, max {MAX_MAP_LABEL_CHARS} characters",
-      "description": "1-2 sentence GM-readable boxed text"
+      "mapLabel": "short map callout, max {MAX_MAP_LABEL_CHARS} characters",
+      "description": "3-4 sentence GM-readable boxed text with one clear cornerstone element",
+      "content": [
+        {{
+          "type": "loot",
+          "quantity": 1,
+          "description": "brief description and purpose aligned with scenario lore"
+        }}
+      ]
     }}
   ]
 }}
 
 Rules:
+- Return JSON only.
+- Do not include markdown.
+- Do not include the internal planning text.
 - "rooms" MUST be an array of objects, never strings.
 - Every room object MUST contain id, label, mapLabel, description.
+- Include exactly these room ids: {room_ids}
+- Do not invent extra room ids.
+- Do not skip any room ids.
+- Do not return placeholders like "description_2".
+- Do not return Unnamed Chamber, Unnamed Room, or empty strings.
 - mapLabel must be max {MAX_MAP_LABEL_CHARS} characters, one compact sentence fragment, no line breaks.
 - description must be max {MAX_DESCRIPTION_CHARS} characters.
-- Include exactly these room ids: {room_ids}
-- Do not return placeholders like "description_2".
-- Do not invent extra ids.
-- Do not return Unnamed Chamber, Unnamed Room or empty strings for room labels or descriptions.
-- Return JSON only.
+- Each description must include one scenario-aligned cornerstone element: loot, enemy, trap, NPC, clue, ritual object, hazard, or secret.
+- Hub rooms should feel important as junctions, social spaces, or decision points.
+- Dead ends should contain secrets, treasure, traps, prisoners, clues, or final threats.
+- Main-path rooms should advance the core scenario.
+- Branch rooms should feel like optional detours with useful discoveries.
+- Every room object MUST contain id, label, mapLabel, description, content.
+- content must be an array of 1-3 objects.
+- Each content object must contain type, quantity, and description.
+- content.type must be one of: loot, enemy, trap, npc, clue, ritualObject, hazard, secret.
+- content.quantity must be an integer from 1 to 3.
+- content.description must be a brief practical GM note explaining what it is and why it matters in the scenario.
+- The room description must mention or clearly imply each content type placed in that room.
 
 Dungeon context:
 {json.dumps(context, ensure_ascii=False)}
@@ -184,39 +269,73 @@ def _groq_chat(context: dict) -> str:
     room_ids = [r["id"] for r in context["rooms"]]
 
     prompt = f"""
-Return ONLY valid JSON. No markdown. No prose before or after JSON.
+Use the dungeon graph below to create a coherent fantasy tabletop DnD scenario.
 
-Schema:
+Plan the scenario internally:
+- intro / hook
+- main conflict
+- story twists
+- climax
+- a few possible unexpected endings
+- how each room supports that scenario
+
+Then return ONLY valid JSON matching this schema:
+
 {{
   "title": "short dungeon title",
-  "premise": "2-4 sentence dungeon hook/backstory",
+  "premise": "compact scenario summary with intro, main conflict, twists, climax, and possible endings",
   "rooms": [
     {{
       "id": 0,
       "label": "3-5 word room name",
-      "mapLabel": "short narrative related to map label and story, max {MAX_MAP_LABEL_CHARS} characters",
-      "description": "1-2 sentence GM-readable boxed text"
+      "mapLabel": "short map callout, max {MAX_MAP_LABEL_CHARS} characters",
+      "description": "3-4 sentence GM-readable boxed text with one clear cornerstone element",
+      "content": [
+        {{
+          "type": "loot",
+          "quantity": 1,
+          "description": "brief description and purpose aligned with scenario lore"
+        }}
+      ]
     }}
   ]
 }}
 
 Rules:
+- Return JSON only.
+- No markdown.
+- No prose before or after JSON.
+- Do not include the internal planning text.
 - Root value must be a JSON object.
 - "rooms" must be an array of objects, never strings.
 - Every room object must contain id, label, mapLabel, description.
-- mapLabel max {MAX_MAP_LABEL_CHARS} characters, no line breaks.
-- description max {MAX_DESCRIPTION_CHARS} characters.
 - Include exactly these room ids: {room_ids}
 - Do not invent extra ids.
+- Do not skip any ids.
 - Do not return placeholders.
 - Do not use trailing commas.
+- Do not return Unnamed Chamber, Unnamed Room, or empty strings.
+- mapLabel max {MAX_MAP_LABEL_CHARS} characters, no line breaks.
+- description max {MAX_DESCRIPTION_CHARS} characters.
+- Each description must include one scenario-aligned cornerstone element: loot, enemy, trap, NPC, clue, ritual object, hazard, or secret.
+- Hub rooms should feel important as junctions, social spaces, or decision points.
+- Dead ends should contain secrets, treasure, traps, prisoners, clues, or final threats.
+- Main-path rooms should advance the core scenario.
+- Branch rooms should feel like optional detours with useful discoveries.
+- Every room object MUST contain id, label, mapLabel, description, content.
+- content must be an array of 1-3 objects.
+- Each content object must contain type, quantity, and description.
+- content.type must be one of: loot, enemy, trap, npc, clue, ritualObject, hazard, secret.
+- content.quantity must be an integer from 1 to 3.
+- content.description must be a brief practical GM note explaining what it is and why it matters in the scenario.
+- The room description must mention or clearly imply each content type placed in that room.
 
 Dungeon context:
 {json.dumps(context, ensure_ascii=False)}
 """.strip()
 
     messages = [
-        {"role": "system", "content": "Return only valid JSON."},
+        {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": prompt},
     ]
 
@@ -257,6 +376,56 @@ def _text(value: Any, fallback: str = "") -> str:
         return fallback
     return str(value).strip() or fallback
 
+def _content_type(value: Any) -> str | None:
+    key = str(value or "").strip().lower().replace(" ", "").replace("-", "").replace("_", "")
+    return CONTENT_TYPE_ALIASES.get(key)
+
+
+def _coerce_quantity(value: Any) -> int:
+    try:
+        return max(1, min(3, int(value)))
+    except (TypeError, ValueError):
+        return 1
+
+
+def _coerce_content(value: Any) -> list[NarrativeContent]:
+    if not value:
+        return []
+
+    items = value if isinstance(value, list) else [value]
+    result: list[NarrativeContent] = []
+
+    for item in items:
+        description = ""
+
+        if isinstance(item, str):
+            kind = _content_type(item)
+            quantity = 1
+
+        elif isinstance(item, dict):
+            kind = _content_type(item.get("type") or item.get("kind") or item.get("element"))
+            quantity = _coerce_quantity(item.get("quantity", 1))
+            description = _compact_text(
+                item.get("description")
+                or item.get("desc")
+                or item.get("purpose")
+                or "",
+                180,
+            )
+
+        else:
+            continue
+
+        if kind:
+            result.append(
+                NarrativeContent(
+                    type=kind,
+                    quantity=quantity,
+                    description=description,
+                )
+            )
+
+    return result[:4]
 
 def _coerce_room(item: Any, fallback_id: int | None = None) -> RoomNarrative | None:
     if not isinstance(item, dict):
@@ -297,6 +466,7 @@ def _coerce_room(item: Any, fallback_id: int | None = None) -> RoomNarrative | N
         label=label,
         map_label=map_label,
         description=description,
+        content=_coerce_content(item.get("content")),
     )
 
 
@@ -333,6 +503,7 @@ def _normalize_narrative(parsed: dict, context: dict) -> DungeonNarrative:
             label="Unnamed Chamber",
             map_label="",
             description="",
+            content=[],
         )
         for rid in expected_ids
         if rid not in returned_ids
@@ -355,6 +526,7 @@ def generate_narrative(context: dict, provider: LLMProvider = "local") -> Dungeo
         room.label = _compact_text(room.label, 42)
         room.description = _compact_text(room.description, MAX_DESCRIPTION_CHARS)
         room.map_label = _compact_text(room.map_label or room.description, MAX_MAP_LABEL_CHARS)
+        room.content = _coerce_content([item.model_dump() for item in room.content])
 
     expected_ids = {r["id"] for r in context["rooms"]}
     result.rooms = [r for r in result.rooms if r.id in expected_ids]
@@ -368,6 +540,7 @@ def generate_narrative(context: dict, provider: LLMProvider = "local") -> Dungeo
                 label="Unnamed Chamber",
                 map_label="",
                 description="",
+                content=[],
             )
             for rid in missing
         )

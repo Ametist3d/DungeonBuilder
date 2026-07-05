@@ -1,5 +1,6 @@
 import type { Room, Corridor, Opening, RoomNarrative } from '../types';
 import { renderNarrativeLabels } from './narrative-labels';
+import { renderNarrativeContent } from './narrative-content';
 import { buildRenderContext } from './context';
 import {
   buildInsetShadowFilter, buildHaloFilter, buildRubblePattern, buildAccentBlurFilter,
@@ -42,6 +43,7 @@ export function renderDungeon(
   renderCompass(ctx);
   renderScaleBar(ctx);
   renderDoors(ctx, entrance, dungeonExit);
+  renderNarrativeContent(ctx, roomNarratives);
 
   return renderNarrativeLabels(ctx, roomNarratives);
 }
