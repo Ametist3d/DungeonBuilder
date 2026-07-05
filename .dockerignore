@@ -1,0 +1,13 @@
+.git
+.gitignore
+
+**/.venv
+**/__pycache__
+**/*.pyc
+**/_bckp
+
+**/node_modules
+frontend/dist
+
+.env
+.DS_Store
