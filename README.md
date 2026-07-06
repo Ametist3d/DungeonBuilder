@@ -5,12 +5,8 @@ Procedural dungeon map generator with a small FastAPI backend and a Vite/TypeScr
 It generates dungeon layouts from a seed, renders rooms/corridors/doors/entrance/exit, and can add AI-generated room narratives as map labels or side-panel notes.
 
 ## Live test
-
-Currently deployed here:
-
-```txt
-http://46.225.185.220:8080
-```
+![Alt text](demo/preview.jpg)
+Currently deployed here: [http://46.225.185.220:8080](http://46.225.185.220:8080)
 
 ## Features
 
