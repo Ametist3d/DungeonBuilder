@@ -8,8 +8,9 @@ from .rng import make_rng
 # --- door classes ---
 
 DoorState = Literal["open", "closed"]
-DoorMaterial = Literal["wood", "iron", "stone", "bone", "force field", "bronze"]
-DoorLock = Literal["none", "locked", "sealed", "magicSealed", "puzzleSealed"]
+DoorMaterial = Literal["wood", "iron", "stone", "bone", "arcane"]
+DoorLock = Literal["none", "locked", "magicSealed", "puzzleSealed"]
+DoorGate = Literal["none", "hard", "soft"]
 
 # --- directions ---
 
@@ -29,6 +30,10 @@ class Door:
     material: DoorMaterial = "wood"
     lock: DoorLock = "none"
     reason: str = ""
+    key_room_id: Optional[int] = None
+    key_name: str = ""
+    gate: DoorGate = "none"
+    checksum: str = ""
 
 @dataclass
 class RoomNode:

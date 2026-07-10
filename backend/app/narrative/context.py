@@ -193,16 +193,25 @@ def build_narrative_context(
 
     def compact_closed_doors(room_id: int) -> str:
         return " ".join(
-            f"{door.other_room_id}:{door.material}:{door.lock}"
+            f"{door.other_room_id}:{door.material}:{door.lock}:k{door.key_room_id}"
             for door in doors_by_room.get(room_id, [])
             if door.state == "closed"
         )
+    
+    def key_type_for(lock: str) -> str:
+        if lock == "magicSealed":
+            return "clue"
 
+        if lock == "puzzleSealed":
+            return "ritualObject"
+
+        return "secret"
+    
     return {
         "n": len(rooms),
         "e": entrance.room_id,
         "x": exit_opening.room_id,
-        "k": "room=[id,depth,flags,links,closedDoors]; flags m=main h=hub d=dead a=accent; links 5c=corridor to room5, 5b=branch to room5; closedDoors to:material:lock",
+        "k": "room=[id,depth,flags,links,closedDoors]; flags m=main h=hub d=dead a=accent; links 5c=corridor to room5, 5b=branch to room5; closedDoors to:material:lock:kKeyRoom; l=[doorId,doorRoom,otherRoom,keyRoom,keyName,keyType,material,lock,gate]",
         "r": [
             [
                 room.id,
@@ -212,5 +221,20 @@ def build_narrative_context(
                 compact_closed_doors(room.id),
             ]
             for room in rooms
+        ],
+        "l": [
+            [
+                door.id,
+                door.room_id,
+                door.other_room_id,
+                door.key_room_id,
+                door.key_name,
+                key_type_for(door.lock),
+                door.material,
+                door.lock,
+                door.gate,
+            ]
+            for door in doors
+            if door.state == "closed" and door.key_room_id is not None
         ],
     }

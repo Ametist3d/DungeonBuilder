@@ -4,6 +4,7 @@ import { renderDungeon } from './render/index';
 import type { DungeonNarrative, GenerateRequest, GenerateResponse, LLMProvider, Size } from './types';
 import { setupPanZoom } from './pan-zoom';
 import { setupMapOverlay } from './map-overlay';
+import { setupHeroControls } from './render/heroes';
 
 const svg = document.getElementById('canvas') as unknown as SVGSVGElement;
 const canvasWrap = document.getElementById('canvas-wrap') as HTMLDivElement;
@@ -42,6 +43,7 @@ const statSeed = document.getElementById('statSeed') as HTMLSpanElement;
 const narrativePanel = document.getElementById('narrativePanel') as HTMLDivElement;
 
 const panZoom = setupPanZoom(canvasWrap, svg);
+setupHeroControls();
 setupMapOverlay(canvasWrap);
 
 const DEFAULT_SCENARIO_NAME = 'Dungeon generator — version 0.1: rooms';
@@ -149,7 +151,7 @@ async function runGenerate(): Promise<void> {
     currentDungeon = result;
     currentNarrative = null;
 
-    renderDungeon(svg, result.rooms, result.corridors, result.entrance, result.exit, [], result.doors);
+    renderDungeon(svg, result.rooms, result.corridors, result.entrance, result.exit, result.doors);
     panZoom.reset();
 
     statRooms.textContent = String(result.rooms.length);
@@ -182,8 +184,8 @@ async function runNarrative(): Promise<void> {
         currentDungeon.corridors,
         currentDungeon.entrance,
         currentDungeon.exit,
-        narrative.rooms,
         currentDungeon.doors,
+        narrative.rooms,
       );
 
       requestAnimationFrame(() => {

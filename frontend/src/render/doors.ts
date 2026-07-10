@@ -1,5 +1,5 @@
 import type {Door, Room, Opening } from '../types';
-import { NS, UNIT, OPPOSITE, DIR_VECTOR, wallCenter, type RenderContext } from './context';
+import { NS, UNIT, OPPOSITE, DIR_VECTOR, cellWallCenter, type RenderContext } from './context';
 
 const DOOR_INSET = 5; // px -- how far into the corridor the door glyph sits from the room wall
 const DOOR_THICKNESS = 6; // px -- how thick the door glyph is
@@ -26,11 +26,27 @@ function findDoor(
   return doors.get(doorKey(parentId, childId, roomId)) || null;
 }
 
+function lockLabel(door: Door): string {
+  if (door.lock === 'locked') return 'normal lock';
+  if (door.lock === 'puzzleSealed') return 'puzzle mechanism';
+  if (door.lock === 'magicSealed') return 'magic scroll seal';
+  return 'no lock';
+}
+
 function doorTitle(door: Door | null): string {
   if (!door || door.state === 'open') return '';
 
-  const lock = door.lock === 'none' ? '' : `${door.lock} `;
-  return `${lock}${door.material} door${door.reason ? ` — ${door.reason}` : ''}`;
+  const parts = [`${door.material} door`];
+
+  if (door.lock === 'locked') parts.push('normal key lock');
+  else if (door.lock === 'puzzleSealed') parts.push('puzzle mechanism lock');
+  else if (door.lock === 'magicSealed') parts.push('magic scroll seal');
+
+  if (door.keyName) {
+    parts.push(`needs ${door.keyName}`);
+  }
+
+  return parts.join(' — ');
 }
 
 const DOOR_TOOLTIP_ID = 'door-tooltip';
@@ -162,6 +178,7 @@ function drawDoor(
         'class',
         `door-closed-bar door-${door.material} door-${door.lock}`,
       );
+      bar.setAttribute('data-door-id', door.id);
 
       bindDoorTooltip(bar, door);
 
@@ -173,6 +190,7 @@ function drawDoor(
         seal.setAttribute('cy', String(glyphPy + (vertical ? UNIT / 2 : 0)));
         seal.setAttribute('r', '5');
         seal.setAttribute('class', `door-seal door-${door.lock}`);
+        seal.setAttribute('data-door-id', door.id);
         bindDoorTooltip(seal, door);
         svg.appendChild(seal);
       }
@@ -238,7 +256,7 @@ const OPENING_LABEL_GAP = 7;   // px between the glyph's outer edge and the labe
 function drawOpening(ctx: RenderContext, room: Room, dir: string, label: string, arrowInward: boolean) {
   const { svg, toPx } = ctx;
   const vertical = dir === 'E' || dir === 'W';
-  const [wx, wy] = wallCenter(room, dir);
+  const [wx, wy] = cellWallCenter(room, dir);
   if (vertical) {
     drawDoor(ctx, wx, wy - 0.5, true);
   } else {

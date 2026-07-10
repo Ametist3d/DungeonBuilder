@@ -8,6 +8,7 @@ import {
 } from './styling';
 import { renderCorridorFloors, renderRoomFloors, renderFloorGrid, renderRoomLabels } from './floors';
 import { renderDoors } from './doors';
+import { renderHeroes } from './heroes';
 
 export function renderDungeon(
   svg: SVGSVGElement,
@@ -15,8 +16,8 @@ export function renderDungeon(
   corridors: Corridor[] = [],
   entrance: Opening | null = null,
   dungeonExit: Opening | null = null,
-  roomNarratives: RoomNarrative[] = [],
   doors: Door[] = [],
+  roomNarratives: RoomNarrative[] = [],
 ): Set<number> {
   svg.innerHTML = '';
   if (rooms.length === 0) return new Set<number>();
@@ -43,9 +44,10 @@ export function renderDungeon(
   renderWallHatching(ctx);
   renderScaleBar(ctx);
   renderDoors(ctx, entrance, dungeonExit, doors);
-  renderNarrativeContent(ctx, roomNarratives);
+  const contentMarkers = renderNarrativeContent(ctx, roomNarratives);
 
   const placedRoomIds = renderNarrativeLabels(ctx, roomNarratives);
+  renderHeroes(ctx, entrance, doors, contentMarkers);
 
   return placedRoomIds;
 }

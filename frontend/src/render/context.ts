@@ -16,6 +16,19 @@ export const wallCenter = (r: Room, dir: string): [number, number] => {
   }
 };
 
+export const cellWallCenter = (r: Room, dir: string): [number, number] => {
+  switch (dir) {
+    case 'N':
+      return [r.x + Math.floor(r.w / 2) + 0.5, r.y];
+    case 'S':
+      return [r.x + Math.floor(r.w / 2) + 0.5, r.y + r.h];
+    case 'E':
+      return [r.x + r.w, r.y + Math.floor(r.h / 2) + 0.5];
+    default:
+      return [r.x, r.y + Math.floor(r.h / 2) + 0.5];
+  }
+};
+
 // Chamfered-square octagon: flat edges land exactly on the bounding box at
 // all four cardinal points (tan(22.5°) = √2 − 1), so corridor attachment
 // points computed from box edges always meet the actual silhouette.
@@ -70,7 +83,7 @@ export function buildRenderContext(
     if (!opening) continue;
     const room = rooms.find((r) => r.id === opening.roomId);
     if (!room) continue;
-    const [wx, wy] = wallCenter(room, opening.direction);
+    const [wx, wy] = cellWallCenter(room, opening.direction);
     const [nx, ny] = DIR_VECTOR[opening.direction];
     const tx = wx + nx * 2, ty = wy + ny * 2; // small margin for the arrow + label
     minX = Math.min(minX, wx, tx);

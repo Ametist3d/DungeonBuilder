@@ -1,4 +1,4 @@
-import type { Room, RoomNarrative } from '../types';
+import type { NarrativeContent, Room, RoomNarrative } from '../types';
 import { UNIT, type RenderContext } from './context';
 import {
   drawNarrativeElementMarker,
@@ -15,6 +15,26 @@ const MAX_ROOM_MARKERS = 9;
 type Point = {
   x: number;
   y: number;
+  gx?: number;
+  gy?: number;
+};
+
+type MarkerItem = {
+  kind: NarrativeElementKind;
+  description: string;
+  content: NarrativeContent;
+};
+
+export interface NarrativeContentMarker {
+  id: string;
+  roomId: number;
+  kind: NarrativeElementKind;
+  description: string;
+  gx: number;
+  gy: number;
+  x: number;
+  y: number;
+  element?: SVGGElement;
 };
 
 function clamp(value: number, min: number, max: number): number {
@@ -43,27 +63,52 @@ function randomFrom(seed: string): () => number {
   };
 }
 
-type MarkerItem = {
-  kind: NarrativeElementKind;
-  description: string;
-};
 
-function expandContent(room: RoomNarrative): MarkerItem[] {
-  const markers: MarkerItem[] = [];
+
+
+function isUnlockDescription(description: string): boolean {
+  return /^Room\s+\d+\s+door\s+\d+-\d+\s+/i.test(description.trim());
+}
+
+function isGeneratedUnlockDuplicate(description: string): boolean {
+  const text = description.trim();
+
+  if (isUnlockDescription(text)) return false;
+
+  return (
+    /\bRoom\s+\d+\s+door\b/i.test(text) ||
+    /\b(unlock|opens?|seals?|sealed|mechanism|key|scroll)\b.*\bdoor\b/i.test(text) ||
+    /\bdoor\b.*\b(room|key|scroll|mechanism)\b/i.test(text)
+  );
+}
+
+function expandContent(room: RoomNarrative, capacity: number): MarkerItem[] {
+  const required: MarkerItem[] = [];
+  const optional: MarkerItem[] = [];
 
   for (const item of room.content || []) {
     const kind = normalizeNarrativeElementKind(item.type);
     if (!kind) continue;
 
-    const quantity = clamp(Math.round(Number(item.quantity || 1)), 1, 3);
-    const description = String(item.description || '').trim();
+    const quantity = isUnlockDescription(String(item.description || ''))
+      ? 1
+      : clamp(Math.round(Number(item.quantity || 1)), 1, 3);
 
+    const description = String(item.description || '').trim();
+    if (isGeneratedUnlockDuplicate(description)) continue;
+    
     for (let i = 0; i < quantity; i++) {
-      markers.push({ kind, description });
+      const marker = { kind, description, content: item };
+
+      if (isUnlockDescription(description)) {
+        required.push(marker);
+      } else {
+        optional.push(marker);
+      }
     }
   }
 
-  return markers.slice(0, MAX_ROOM_MARKERS);
+  return [...required, ...optional].slice(0, Math.max(required.length, capacity));
 }
 
 function pointFitsRoom(room: Room, px: number, py: number, roomPx: Point, w: number, h: number): boolean {
@@ -108,7 +153,7 @@ function buildCandidates(ctx: RenderContext, room: Room, markerCount: number): P
         const [x, y] = ctx.toPx(gx + 0.5, gy + 0.5);
 
         if (pointFitsRoom(room, x, y, { x: roomPxX, y: roomPxY }, w, h)) {
-          cells.push({ x, y });
+          cells.push({ x, y, gx: gx + 0.5, gy: gy + 0.5 });
         }
       }
     }
@@ -157,6 +202,20 @@ function buildCandidates(ctx: RenderContext, room: Room, markerCount: number): P
   return cells.sort((a, b) => score(a) - score(b));
 }
 
+function roomMarkerCapacity(ctx: RenderContext, room: Room): number {
+  const cells = buildCandidates(ctx, room, 1).length;
+
+  if (cells <= 2) return 1;
+  if (cells <= 5) return 2;
+  if (cells <= 9) return 3;
+  if (cells <= 16) return 4;
+
+  return clamp(Math.floor(cells / 4) + 1, 1, MAX_ROOM_MARKERS);
+}
+
+function samePoint(a: Point, b: Point): boolean {
+  return a.gx === b.gx && a.gy === b.gy;
+}
 function pickMarkerPoints(ctx: RenderContext, room: Room, count: number): Point[] {
   const [x, y] = ctx.toPx(room.x, room.y);
   const center = {
@@ -164,58 +223,82 @@ function pickMarkerPoints(ctx: RenderContext, room: Room, count: number): Point[
     y: y + room.h * UNIT / 2,
   };
 
+  const candidates = buildCandidates(ctx, room, count);
   const picked: Point[] = [];
 
-  for (const candidate of buildCandidates(ctx, room, count)) {
-    if (!awayFromCenterBadge(candidate, center)) continue;
-    if (!farEnough(candidate, picked)) continue;
+  const tryPick = (strictCenter: boolean, strictDistance: boolean): void => {
+    for (const candidate of candidates) {
+      if (picked.length >= count) return;
+      if (picked.some((point) => samePoint(point, candidate))) continue;
+      if (strictCenter && !awayFromCenterBadge(candidate, center)) continue;
+      if (strictDistance && !farEnough(candidate, picked)) continue;
 
-    picked.push(candidate);
-    if (picked.length >= count) break;
-  }
-
-  if (!picked.length && count > 0) {
-    const fallback = buildCandidates(ctx, room, count)[0];
-
-    if (fallback) {
-      picked.push(fallback);
-    } else {
-      const [x, y] = ctx.toPx(
-        room.x + Math.floor(room.w / 2) + 0.5,
-        room.y + Math.floor(room.h / 2) + 0.5,
-      );
-
-      picked.push({ x, y });
+      picked.push(candidate);
     }
-  }
+  };
 
-  return picked;
+  tryPick(true, true);
+  tryPick(false, true);
+  tryPick(false, false);
+
+  return picked.slice(0, count);
 }
 
-export function renderNarrativeContent(
+export function getNarrativeContentMarkers(
   ctx: RenderContext,
   narratives: RoomNarrative[] = [],
-): void {
-  if (!narratives.length) return;
+): NarrativeContentMarker[] {
+  const result: NarrativeContentMarker[] = [];
 
   for (const narrative of narratives) {
     const room = ctx.byId.get(narrative.id);
     if (!room) continue;
 
-    const markers = expandContent(narrative);
+    const capacity = roomMarkerCapacity(ctx, room);
+    const markers = expandContent(narrative, capacity);
     if (!markers.length) continue;
 
     const points = pickMarkerPoints(ctx, room, markers.length);
 
-    markers.slice(0, points.length).forEach((marker, index) => {
-      drawNarrativeElementMarker(
-        ctx,
-        marker.kind,
-        points[index].x,
-        points[index].y,
-        MARKER_SIZE,
-        marker.description,
-      );
+    markers.forEach((marker, index) => {
+      const point = points[index];
+
+      if (!point || point.gx === undefined || point.gy === undefined) return;
+
+      result.push({
+        id: `${narrative.id}:${index}:${marker.kind}`,
+        roomId: narrative.id,
+        kind: marker.kind,
+        description: marker.description,
+        gx: point.gx,
+        gy: point.gy,
+        x: point.x,
+        y: point.y,
+      });
     });
   }
+
+  return result;
+}
+
+export function renderNarrativeContent(
+  ctx: RenderContext,
+  narratives: RoomNarrative[] = [],
+): NarrativeContentMarker[] {
+  const markers = getNarrativeContentMarkers(ctx, narratives);
+
+  markers.forEach((marker) => {
+    marker.element = drawNarrativeElementMarker(
+      ctx,
+      marker.kind,
+      marker.x,
+      marker.y,
+      MARKER_SIZE,
+      marker.description,
+    );
+
+    marker.element.setAttribute('data-content-id', marker.id);
+  });
+
+  return markers;
 }

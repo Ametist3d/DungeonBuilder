@@ -4,8 +4,8 @@ export type Shape = 'rect' | 'circle' | 'octagon';
 export type LLMProvider = 'local' | 'api';
 
 export type DoorState = 'open' | 'closed';
-export type DoorMaterial = 'wood' | 'iron' | 'stone' | 'bone' | 'puzzle';
-export type DoorLock = 'none' | 'locked' | 'sealed' | 'magicSealed' | 'puzzleSealed';
+export type DoorMaterial = 'wood' | 'iron' | 'stone' | 'bone' | 'arcane';
+export type DoorLock = 'none' | 'locked' | 'magicSealed' | 'puzzleSealed';
 
 export interface Room {
   id: number;
@@ -40,6 +40,10 @@ export interface Door {
   material: DoorMaterial;
   lock: DoorLock;
   reason: string;
+  keyRoomId?: number | null;
+  keyName?: string;
+  gate?: 'none' | 'hard' | 'soft';
+  checksum?: string;  
 }
 
 export interface NarrativeContent {
@@ -57,7 +61,7 @@ export interface GenerateRequest {
   octagonPct: number;
   accentPct: number;
   llmProvider?: LLMProvider;
-  closedDoorPct: number;
+  closedDoorPct?: number;
 }
 
 export interface GenerateResponse {

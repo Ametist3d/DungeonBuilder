@@ -9,20 +9,25 @@ const ELEMENT_LABELS: Record<NarrativeElementKind, string> = {
   enemy: 'Enemy',
   trap: 'Trap',
   npc: 'NPC',
-  clue: 'Clue',
-  ritualObject: 'Ritual',
+  clue: 'Scroll / clue',
+  ritualObject: 'Mechanism',
   hazard: 'Hazard',
-  secret: 'Secret',
+  secret: 'Key / secret',
 };
 
-const DOOR_ROWS = [
-  { label: 'Open', className: 'door-open' },
-  { label: 'Wood locked', className: 'door-wood door-locked' },
-  { label: 'Iron locked', className: 'door-iron door-locked' },
-  { label: 'Stone sealed', className: 'door-stone door-sealed' },
-  { label: 'Bone sealed', className: 'door-bone door-sealed' },
-  { label: 'Magic sealed', className: 'door-magic door-magicSealed' },
-  { label: 'Puzzle sealed', className: 'door-puzzle door-puzzleSealed' },
+const DOOR_MATERIAL_ROWS = [
+  { label: 'Open passage', className: 'door-open' },
+  { label: 'Wood door', className: 'door-wood' },
+  { label: 'Iron door', className: 'door-iron' },
+  { label: 'Stone door', className: 'door-stone' },
+  { label: 'Bone door', className: 'door-bone' },
+  { label: 'Arcane door', className: 'door-arcane' },
+];
+
+const LOCK_ROWS = [
+  { label: 'Lock — key', className: 'door-locked' },
+  { label: 'Puzzle — mech', className: 'door-puzzleSealed' },
+  { label: 'Magic — scroll', className: 'door-magicSealed' },
 ];
 
 function iconSvg(kind: NarrativeElementKind): string {
@@ -44,8 +49,8 @@ function elementRows(): string {
     .join('');
 }
 
-function doorRows(): string {
-  return DOOR_ROWS
+function swatchRows(rows: { label: string; className: string }[]): string {
+  return rows
     .map((door) => `
       <div class="map-ui-row">
         <span class="map-ui-door-swatch ${door.className}"></span>
@@ -78,8 +83,11 @@ export function setupMapOverlay(container: HTMLElement): void {
       <div class="map-ui-section">Elements</div>
       ${elementRows()}
 
-      <div class="map-ui-section map-ui-section-doors">Doors</div>
-      ${doorRows()}
+    <div class="map-ui-section map-ui-section-doors">Door types</div>
+    ${swatchRows(DOOR_MATERIAL_ROWS)}
+
+    <div class="map-ui-section map-ui-section-locks">Lock types</div>
+    ${swatchRows(LOCK_ROWS)}
     </section>
   `;
 

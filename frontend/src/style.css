@@ -479,17 +479,6 @@ text.room-label {
   font-weight: 700;
 }
 
-.narrative-element-marker,
-.door-closed-bar,
-.door-seal {
-  pointer-events: auto;
-  cursor: help;
-}
-
-.narrative-element-marker circle {
-  filter: drop-shadow(1px 1px 0 var(--shadow-color));
-}
-
 .narrative-element-tooltip,
 .door-tooltip {
   position: fixed;
@@ -523,40 +512,55 @@ text.room-label {
   opacity: 1;
   transform: translateY(0);
 }
+.narrative-element-marker,
+.door-closed-bar,
+.door-seal {
+  pointer-events: auto;
+  cursor: help;
+}
+
+.narrative-element-marker circle {
+  filter: drop-shadow(1px 1px 0 var(--shadow-color));
+}
+
+.narrative-element-marker.picked,
+.picked {
+  opacity: 0.35;
+  filter: grayscale(1);
+  pointer-events: auto;
+}
 
 .door-closed-bar {
-  stroke: var(--accent);
+  stroke: var(--ink);
   stroke-width: 12;
   stroke-linecap: square;
+  pointer-events: stroke;
 }
 
-.door-wood {
-  stroke: #5b3418;
+.door-seal {
+  fill: var(--panel);
+  stroke: var(--ink);
+  stroke-width: 1;
+  pointer-events: all;
 }
 
-.door-iron {
-  stroke: #50698a;
-}
+.door-wood { stroke: #6b3f20; }
+.door-iron { stroke: #5f6470; }
+.door-stone { stroke: #78736a; }
+.door-bone { stroke: #d8c99e; }
+.door-arcane { stroke: #6b3fd1; }
 
-.door-stone {
-  stroke: #363636;
-}
-
-.door-bone {
-  stroke: #998b65;
-}
-
-.door-puzzle {
-  stroke: var(--accent);
-}
-
-.door-magicSealed,
-.door-puzzleSealed {
-  stroke-width: 3;
+.door-magicSealed {
+  stroke: 3 3;
 }
 
 .door-puzzleSealed {
-  stroke-dasharray: 2 2;
+  stroke-dasharray: 8 3;
+}
+
+.door-unlocked {
+  opacity: 0.25;
+  filter: grayscale(1);
 }
 
 .door-seal {
@@ -713,96 +717,114 @@ text.room-label {
   position: relative;
   display: inline-block;
   flex: 0 0 24px;
-  border-left: 2px solid var(--room-stroke);
-  border-right: 2px solid var(--room-stroke);
-  border-top: 2px solid var(--room-stroke);
-  border-bottom: 2px solid var(--room-stroke);
+  border: 2px solid var(--room-stroke);
   background: var(--room-fill);
 }
 
-.map-ui-door-swatch::before,
-.map-ui-door-swatch::after {
+.map-ui-door-swatch::before {
   content: '';
   position: absolute;
   left: 0px;
   right: 0px;
-  height: 0px;
-  background: var(--room-stroke);
-}
-
-.map-ui-door-swatch::before {
-  top: 0;
-}
-
-.map-ui-door-swatch::after {
-  bottom: 0;
-}
-
-.map-ui-door-swatch:not(.door-open) {
-  border-color: var(--room-stroke);
-}
-
-.map-ui-door-swatch:not(.door-open)::before {
   top: 50%;
   height: 6px;
   transform: translateY(-50%);
-  border-radius: 0;
-  background: var(--accent);
+  background: var(--ink);
   z-index: 2;
+}
+
+.map-ui-door-swatch::after {
+  content: '';
+  display: none;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 8px;
+  height: 8px;
+  transform: translate(-50%, -50%);
+  /* border: 0px solid var(--accent); */
+  border-radius: 50%;
+  background: var(--room-fill);
+  z-index: 3;
 }
 
 .map-ui-door-swatch.door-open::before {
   display: none;
 }
 
-.map-ui-door-swatch.door-wood::before {
-  background: #5b3418;
+.map-ui-door-swatch.door-wood::before { background: #6b3f20; }
+.map-ui-door-swatch.door-iron::before { background: #5f6470; }
+.map-ui-door-swatch.door-stone::before { background: #78736a; }
+.map-ui-door-swatch.door-bone::before { background: #d8c99e; }
+.map-ui-door-swatch.door-arcane::before { background: #6b3fd1; }
+
+.map-ui-door-swatch.door-locked::before {
+  background: var(--ink);
 }
 
-.map-ui-door-swatch.door-iron::before {
-  background: #50698a;
-}
-
-.map-ui-door-swatch.door-stone::before {
-  background: #363636;
-}
-
-.map-ui-door-swatch.door-bone::before {
-  background: #998b65;
-}
-
-.map-ui-door-swatch.door-puzzle {
-  border-color: var(--accent);
-}
-
-.map-ui-door-swatch.door-magic::before {
+.map-ui-door-swatch.door-magicSealed::before {
   background: repeating-linear-gradient(
     90deg,
-    var(--accent) 0 4px,
-    transparent 4px 7px
+    var(--accent) 0 3px,
+    transparent 3px 6px
   );
 }
 
-.map-ui-door-swatch.door-magicSealed,
-.map-ui-door-swatch.door-puzzleSealed {
-  overflow: visible;
+.map-ui-door-swatch.door-puzzleSealed::before {
+  background: repeating-linear-gradient(
+    90deg,
+    var(--accent) 0 6px,
+    transparent 6px 9px
+  );
 }
 
 .map-ui-door-swatch.door-magicSealed::after,
 .map-ui-door-swatch.door-puzzleSealed::after {
-  left: 50%;
-  top: 50%;
-  right: auto;
-  bottom: auto;
-  width: 8px;
-  height: 8px;
-  transform: translate(-50%, -50%);
-  border: 2px solid var(--accent);
-  border-radius: 50%;
-  background: var(--room-fill);
-  z-index: 3;
+  display: block;
 }
 
 .map-ui-door-swatch.door-puzzleSealed::after {
   border-style: dashed;
+}
+
+.hero-token {
+  pointer-events: none;
+  filter: drop-shadow(2px 2px 0 color-mix(in srgb, var(--shadow-color) 70%, transparent));
+}
+
+.hero-base {
+  fill: var(--room-fill);
+  stroke: var(--ink);
+  stroke-width: 2;
+}
+
+.hero-cloak {
+  fill: var(--accent);
+  stroke: var(--ink);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+}
+
+.hero-face {
+  fill: #d8b37b;
+  stroke: var(--ink);
+  stroke-width: 1;
+}
+
+.hero-hood {
+  fill: var(--ink);
+  opacity: 0.9;
+}
+
+.hero-blade {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.picked {
+  opacity: 0.35;
+  filter: grayscale(1);
+  pointer-events: auto;
 }

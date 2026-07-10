@@ -7,8 +7,9 @@ Size = Literal["small", "medium", "large"]
 Shape = Literal["rect", "circle", "octagon"]
 LLMProvider = Literal["local", "api"]
 DoorState = Literal["open", "closed"]
-DoorMaterial = Literal["wood", "iron", "stone", "bone", "puzzle"]
-DoorLock = Literal["none", "locked",  "sealed", "magicSealed", "puzzleSealed"]
+DoorMaterial = Literal["wood", "iron", "stone", "bone", "arcane"]
+DoorLock = Literal["none", "locked", "magicSealed", "puzzleSealed"]
+DoorGate = Literal["none", "hard", "soft"]
 
 class Door(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
@@ -22,6 +23,10 @@ class Door(BaseModel):
     material: DoorMaterial = "wood"
     lock: DoorLock = "none"
     reason: str = ""
+    key_room_id: Optional[int] = Field(None, alias="keyRoomId")
+    key_name: str = Field("", alias="keyName")
+    gate: DoorGate = "none"
+    checksum: str = ""    
 
 class Room(BaseModel):
     model_config = ConfigDict(populate_by_name=True)

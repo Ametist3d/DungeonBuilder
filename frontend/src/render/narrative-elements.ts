@@ -133,8 +133,25 @@ export const NARRATIVE_ELEMENT_SYMBOLS: Record<NarrativeElementKind, string> = {
   `,
 
   clue: `
-    <circle cx="-2" cy="-2" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
-    <path d="M3,3 L9,9" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>
+    <path d="M-6,-8 H5 C7.2,-8 9,-6.2 9,-4 C9,-2.4 8.2,-1.2 7,-0.5 V7.5 H-5 C-7.2,7.5 -9,5.7 -9,3.5 C-9,1.7 -7.7,0.2 -6,-0.2 Z"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linejoin="round"/>
+    <path d="M-6,-8 C-4.3,-7.4 -4.3,-1.2 -6,-0.2"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="2"
+      stroke-linecap="round"/>
+    <path d="M-3,-4.8 H4 M-3,-2 H5 M-3,0.8 H3"
+      stroke="currentColor"
+      stroke-width="1.4"
+      stroke-linecap="round"/>
+    <path d="M5,-8 C3.5,-6.7 3.5,-2.1 5,-0.5"
+      fill="none"
+      stroke="currentColor"
+      stroke-width="1.5"
+      stroke-linecap="round"/>
   `,
 
   ritualObject: `
@@ -204,7 +221,7 @@ export function drawNarrativeElementMarker(
   y: number,
   size = 24,
   description = '',
-): void {
+): SVGGElement {
   ensureNarrativeElementSymbols(ctx);
 
   const group = document.createElementNS(NS, 'g');
@@ -212,8 +229,15 @@ export function drawNarrativeElementMarker(
   group.setAttribute('transform', `translate(${x}, ${y})`);
   group.style.color = 'var(--ink)';
 
-  if (description.trim()) {
-    group.addEventListener('pointerenter', (e) => showTooltip(e, description));
+  const tooltip = description.trim();
+
+  if (tooltip) {
+    group.setAttribute('data-tooltip', tooltip);
+
+    group.addEventListener('pointerenter', (e) => {
+      showTooltip(e, group.getAttribute('data-tooltip') || '');
+    });
+
     group.addEventListener('pointermove', moveTooltip);
     group.addEventListener('pointerleave', hideTooltip);
   }
@@ -234,4 +258,5 @@ export function drawNarrativeElementMarker(
   group.appendChild(use);
 
   ctx.svg.appendChild(group);
+  return group;
 }

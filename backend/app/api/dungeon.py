@@ -5,7 +5,7 @@ from fastapi import APIRouter
 
 from ..generator.rng import make_rng
 from ..generator.pipeline import SIZE_TARGETS, generate_dungeon
-from ..generator.entities import build_doors
+from ..generator.locks import build_doors
 from ..models import Corridor, Door, GenerateRequest, GenerateResponse, Opening, Room
 from ..narrative.context import build_narrative_context
 from ..narrative.llm import generate_narrative
@@ -33,6 +33,7 @@ def generate(req: GenerateRequest) -> GenerateResponse:
         rooms,
         corridors,
         entrance,
+        exit_opening,
         seed,
         req.closed_door_pct,
     )
@@ -68,6 +69,10 @@ def generate(req: GenerateRequest) -> GenerateResponse:
                 material=door.material,
                 lock=door.lock,
                 reason=door.reason,
+                key_room_id=door.key_room_id,
+                key_name=door.key_name,
+                gate=door.gate,
+                checksum=door.checksum,
             )
             for door in doors
         ],
@@ -94,6 +99,7 @@ def narrate(req: GenerateRequest) -> Any:
         rooms,
         corridors,
         entrance,
+        exit_opening,
         seed,
         req.closed_door_pct,
     )
