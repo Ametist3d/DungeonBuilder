@@ -2,6 +2,8 @@ export type Direction = 'N' | 'E' | 'S' | 'W';
 export type Size = 'small' | 'medium' | 'large';
 export type Shape = 'rect' | 'circle' | 'octagon';
 export type LLMProvider = 'local' | 'api';
+export type EnemyType = 'melee' | 'ranged' | 'mage';
+export type EnemyDifficulty = 'normal' | 'elite' | 'boss';
 
 export type DoorState = 'open' | 'closed';
 export type DoorMaterial = 'wood' | 'iron' | 'stone' | 'bone' | 'arcane';
@@ -30,6 +32,21 @@ export type NarrativeElementType =
   | 'hazard'
   | 'secret';
 
+export type LootType =
+  | 'armor'
+  | 'weapon'
+  | 'treasure'
+  | 'spell'
+  | 'hpPotion'
+  | 'manaPotion';
+
+export interface LootItem {
+  name: string;
+  type: LootType;
+  value: number;
+  description?: string;
+}
+
 export interface Door {
   id: string;
   parentId: number;
@@ -50,6 +67,12 @@ export interface NarrativeContent {
   type: NarrativeElementType | string;
   quantity: number;
   description?: string;
+
+  enemyType?: EnemyType | null;
+  difficulty?: EnemyDifficulty | null;
+  hp?: number | null;
+
+  loot?: LootItem[];
 }
 
 export interface GenerateRequest {

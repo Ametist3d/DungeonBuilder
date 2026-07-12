@@ -792,6 +792,28 @@ text.room-label {
   filter: drop-shadow(2px 2px 0 color-mix(in srgb, var(--shadow-color) 70%, transparent));
 }
 
+.hero-hp-ring,
+.hero-mana-ring {
+  fill: none;
+  stroke-linecap: round;
+  stroke-dasharray: 100 100;
+  stroke-dashoffset: 0;
+  pointer-events: none;
+  transition:
+    stroke-dasharray 160ms ease,
+    opacity 120ms ease;
+}
+
+.hero-hp-ring {
+  stroke: #a3261a;
+  stroke-width: 2.8;
+}
+
+.hero-mana-ring {
+  stroke: #3e6fa8;
+  stroke-width: 2.4;
+}
+
 .hero-base {
   fill: var(--room-fill);
   stroke: var(--ink);
@@ -827,4 +849,369 @@ text.room-label {
   opacity: 0.35;
   filter: grayscale(1);
   pointer-events: auto;
+}
+
+.combat-hud {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  z-index: 25;
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--panel) 94%, transparent);
+  color: var(--text);
+  box-shadow: 2px 2px 0 color-mix(in srgb, var(--shadow-color) 45%, transparent);
+  font-size: 12px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.combat-hud.combat-active {
+  border-color: var(--accent);
+}
+
+.combat-hud.combat-dead {
+  background: var(--accent);
+  color: var(--room-fill);
+}
+.enemy-token {
+  --enemy-icon-scale: 0.088;
+  --enemy-body-radius: 12px;
+  --enemy-ring-width: 4;
+
+  pointer-events: auto;
+  cursor: crosshair;
+
+  filter:
+    drop-shadow(
+      1px 1px 0
+      color-mix(
+        in srgb,
+        var(--shadow-color) 75%,
+        transparent
+      )
+    );
+}
+
+.enemy-body {
+  r: var(--enemy-body-radius);
+
+  fill:
+    color-mix(
+      in srgb,
+      var(--room-fill) 92%,
+      black 8%
+    );
+
+  stroke: var(--ink);
+  stroke-width: 1.6;
+}
+
+.enemy-hp-ring {
+  fill: none;
+  stroke: var(--enemy-color);
+  stroke-width: var(--enemy-ring-width);
+  stroke-linecap: round;
+  stroke-dasharray: 100 100;
+  stroke-dashoffset: 0;
+  pointer-events: none;
+  transition: stroke-dasharray 160ms ease;
+}
+
+
+.enemy-hp-ring {
+  stroke: var(--enemy-color);
+  stroke-linecap: round;
+
+  transition:
+    stroke-dashoffset 120ms ease;
+}
+
+.enemy-icon-wrap {
+  color: var(--enemy-color);
+
+  transform:
+    scale(var(--enemy-icon-scale));
+
+  transform-origin: 0 0;
+
+  pointer-events: none;
+}
+
+.enemy-icon-outline {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 18;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+
+  transform:
+    translate(-181px, -171px);
+}
+
+.enemy-icon-fill {
+  fill: currentColor;
+
+  transform:
+    translate(-181px, -171px);
+}
+
+.enemy-type-glyph {
+  fill: var(--ink);
+
+  font-family:
+    'SF Mono',
+    Consolas,
+    monospace;
+
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.6px;
+
+  pointer-events: none;
+}
+
+.enemy-normal {
+  --enemy-color: #6f6a60;
+  --enemy-icon-scale: 0.082;
+  --enemy-body-radius: 11px;
+  --enemy-ring-width: 3.5;
+}
+
+.enemy-elite {
+  --enemy-color: #b06f18;
+  --enemy-icon-scale: 0.091;
+  --enemy-body-radius: 12.5px;
+  --enemy-ring-width: 4.5;
+}
+
+.enemy-boss {
+  --enemy-color: #8a1f11;
+  --enemy-icon-scale: 0.1;
+  --enemy-body-radius: 14px;
+  --enemy-ring-width: 5;
+}
+
+.enemy-token:not(.enemy-active) {
+  opacity: 0.72;
+}
+
+.enemy-token.enemy-active {
+  filter:
+    drop-shadow(
+      1px 1px 0
+      color-mix(
+        in srgb,
+        var(--shadow-color) 75%,
+        transparent
+      )
+    )
+    drop-shadow(
+      0 0 5px
+      var(--enemy-color)
+    );
+}
+
+.enemy-token.enemy-defeated {
+  opacity: 0.2;
+  filter: grayscale(1);
+  pointer-events: none;
+}
+
+.enemy-tooltip {
+  position: fixed;
+  z-index: 1100;
+  max-width: 280px;
+  padding: 9px 11px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--panel) 96%, black 4%);
+  color: var(--text);
+  box-shadow: 3px 3px 0 color-mix(in srgb, var(--shadow-color) 60%, transparent);
+  font-size: 12px;
+  line-height: 1.4;
+  white-space: pre-line;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(3px);
+  transition: opacity 55ms ease, transform 55ms ease;
+}
+
+.enemy-tooltip.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.hero-token.hero-dead {
+  opacity: 0.35;
+  filter: grayscale(1);
+}
+
+
+.player-hud {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  z-index: 25;
+
+  min-width: 330px;
+  padding: 9px 11px;
+
+  border: 1px solid var(--border);
+  border-radius: 6px;
+
+  background:
+    color-mix(
+      in srgb,
+      var(--panel) 94%,
+      transparent
+    );
+
+  color: var(--text);
+
+  box-shadow:
+    2px 2px 0
+    color-mix(
+      in srgb,
+      var(--shadow-color) 45%,
+      transparent
+    );
+
+  pointer-events: none;
+}
+
+.player-hud-stats {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+
+  font-family:
+    'SF Mono',
+    Consolas,
+    monospace;
+
+  font-size: 11px;
+}
+
+.player-hud-stats span {
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
+.player-hud-stats b {
+  color: var(--text);
+  font-weight: 800;
+}
+
+.player-hud-status {
+  margin-top: 6px;
+  padding-top: 5px;
+
+  border-top:
+    1px solid
+    color-mix(
+      in srgb,
+      var(--border) 70%,
+      transparent
+    );
+
+  color: var(--text-dim);
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.player-hud.combat-active {
+  border-color: var(--accent);
+}
+
+.player-hud.player-defeated {
+  background: var(--accent);
+  color: var(--room-fill);
+}
+
+.player-hud.player-defeated span,
+.player-hud.player-defeated b,
+.player-hud.player-defeated .player-hud-status {
+  color: var(--room-fill);
+}
+
+.loot-marker {
+  color: #8a5a22;
+  pointer-events: auto;
+  cursor: help;
+
+  filter:
+    drop-shadow(
+      1px 1px 0
+      color-mix(
+        in srgb,
+        var(--shadow-color) 75%,
+        transparent
+      )
+    );
+}
+
+.loot-marker-background {
+  fill: var(--room-fill);
+  stroke: var(--ink);
+  stroke-width: 1.5;
+}
+
+.loot-chest-icon {
+  color: #8a5a22;
+  pointer-events: none;
+}
+
+.loot-marker.picked {
+  opacity: 0.3;
+  filter: grayscale(1);
+  pointer-events: none;
+}
+
+.loot-tooltip {
+  position: fixed;
+  z-index: 1100;
+
+  max-width: 340px;
+  padding: 10px 12px;
+
+  border: 1px solid #8a5a22;
+  border-radius: 6px;
+
+  background:
+    color-mix(
+      in srgb,
+      var(--panel) 96%,
+      black 4%
+    );
+
+  color: var(--text);
+
+  box-shadow:
+    3px 3px 0
+    color-mix(
+      in srgb,
+      var(--shadow-color) 60%,
+      transparent
+    );
+
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-line;
+
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(3px);
+
+  transition:
+    opacity 55ms ease,
+    transform 55ms ease;
+}
+
+.loot-tooltip.visible {
+  opacity: 1;
+  transform: translateY(0);
 }

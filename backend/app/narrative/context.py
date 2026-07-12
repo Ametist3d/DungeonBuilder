@@ -66,19 +66,33 @@ GROQ_JSON_SCHEMA = {
         "schema": {
             "type": "object",
             "properties": {
-                "title": {"type": "string"},
-                "premise": {"type": "string"},
+                "title": {
+                    "type": "string",
+                },
+                "premise": {
+                    "type": "string",
+                },
                 "rooms": {
                     "type": "array",
                     "items": {
                         "type": "object",
                         "properties": {
-                            "id": {"type": "integer"},
-                            "label": {"type": "string"},
-                            "mapLabel": {"type": "string"},
-                            "description": {"type": "string"},
+                            "id": {
+                                "type": "integer",
+                            },
+                            "label": {
+                                "type": "string",
+                            },
+                            "mapLabel": {
+                                "type": "string",
+                            },
+                            "description": {
+                                "type": "string",
+                            },
                             "content": {
                                 "type": "array",
+                                "minItems": 1,
+                                "maxItems": 3,
                                 "items": {
                                     "type": "object",
                                     "properties": {
@@ -89,26 +103,125 @@ GROQ_JSON_SCHEMA = {
                                                 "enemy",
                                                 "trap",
                                                 "npc",
-                                                "clue",
-                                                "ritualObject",
                                                 "hazard",
-                                                "secret",
                                             ],
                                         },
-                                        "quantity": {"type": "integer"},
-                                        "description": {"type": "string"},
+                                        "quantity": {
+                                            "type": "integer",
+                                            "minimum": 1,
+                                            "maximum": 3,
+                                        },
+                                        "description": {
+                                            "type": "string",
+                                        },
+                                        "enemyType": {
+                                            "anyOf": [
+                                                {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "melee",
+                                                        "ranged",
+                                                        "mage",
+                                                    ],
+                                                },
+                                                {
+                                                    "type": "null",
+                                                },
+                                            ],
+                                        },
+                                        "difficulty": {
+                                            "anyOf": [
+                                                {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "normal",
+                                                        "elite",
+                                                        "boss",
+                                                    ],
+                                                },
+                                                {
+                                                    "type": "null",
+                                                },
+                                            ],
+                                        },
+                                        "hp": {
+                                            "anyOf": [
+                                                {
+                                                    "type": "integer",
+                                                    "minimum": 1,
+                                                },
+                                                {
+                                                    "type": "null",
+                                                },
+                                            ],
+                                        },
+                                        "loot": {
+                                            "type": "array",
+                                            "maxItems": 3,
+                                            "items": {
+                                                "type": "object",
+                                                "properties": {
+                                                    "name": {
+                                                        "type": "string",
+                                                    },
+                                                    "type": {
+                                                        "type": "string",
+                                                        "enum": [
+                                                            "armor",
+                                                            "weapon",
+                                                            "treasure",
+                                                            "spell",
+                                                            "hpPotion",
+                                                            "manaPotion",
+                                                        ],
+                                                    },
+                                                    "value": {
+                                                        "type": "integer",
+                                                        "minimum": 0,
+                                                    },
+                                                    "description": {
+                                                        "type": "string",
+                                                    },
+                                                },
+                                                "required": [
+                                                    "name",
+                                                    "type",
+                                                    "value",
+                                                    "description",
+                                                ],
+                                                "additionalProperties": False,
+                                            },
+                                        },
                                     },
-                                    "required": ["type", "quantity", "description"],
+                                    "required": [
+                                        "type",
+                                        "quantity",
+                                        "description",
+                                        "enemyType",
+                                        "difficulty",
+                                        "hp",
+                                        "loot",
+                                    ],
                                     "additionalProperties": False,
                                 },
                             },
                         },
-                        "required": ["id", "label", "mapLabel", "description", "content"],
+                        "required": [
+                            "id",
+                            "label",
+                            "mapLabel",
+                            "description",
+                            "content",
+                        ],
                         "additionalProperties": False,
                     },
                 },
             },
-            "required": ["title", "premise", "rooms"],
+            "required": [
+                "title",
+                "premise",
+                "rooms",
+            ],
             "additionalProperties": False,
         },
     },

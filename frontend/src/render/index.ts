@@ -9,6 +9,9 @@ import {
 import { renderCorridorFloors, renderRoomFloors, renderFloorGrid, renderRoomLabels } from './floors';
 import { renderDoors } from './doors';
 import { renderHeroes } from './heroes';
+import { renderEnemies } from './enemies';
+import { renderLoot } from './loot';
+
 
 export function renderDungeon(
   svg: SVGSVGElement,
@@ -44,10 +47,25 @@ export function renderDungeon(
   renderWallHatching(ctx);
   renderScaleBar(ctx);
   renderDoors(ctx, entrance, dungeonExit, doors);
-  const contentMarkers = renderNarrativeContent(ctx, roomNarratives);
+  const contentMarkers = renderNarrativeContent(
+    ctx,
+    roomNarratives,
+  );
 
-  const placedRoomIds = renderNarrativeLabels(ctx, roomNarratives);
-  renderHeroes(ctx, entrance, doors, contentMarkers);
+  renderLoot(ctx, contentMarkers);
+  renderEnemies(ctx, contentMarkers);
+
+  const placedRoomIds = renderNarrativeLabels(
+    ctx,
+    roomNarratives,
+  );
+
+  renderHeroes(
+    ctx,
+    entrance,
+    doors,
+    contentMarkers,
+  );
 
   return placedRoomIds;
 }

@@ -30,12 +30,13 @@ export interface NarrativeContentMarker {
   roomId: number;
   kind: NarrativeElementKind;
   description: string;
+  content: NarrativeContent;
   gx: number;
   gy: number;
   x: number;
   y: number;
   element?: SVGGElement;
-};
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value));
@@ -90,9 +91,18 @@ function expandContent(room: RoomNarrative, capacity: number): MarkerItem[] {
     const kind = normalizeNarrativeElementKind(item.type);
     if (!kind) continue;
 
-    const quantity = isUnlockDescription(String(item.description || ''))
-      ? 1
-      : clamp(Math.round(Number(item.quantity || 1)), 1, 3);
+    const quantity =
+      kind === 'loot'
+        ? 1
+        : isUnlockDescription(
+            String(item.description || ''),
+          )
+          ? 1
+          : clamp(
+              Math.round(Number(item.quantity || 1)),
+              1,
+              3,
+            );
 
     const description = String(item.description || '').trim();
     if (isGeneratedUnlockDuplicate(description)) continue;
@@ -270,6 +280,7 @@ export function getNarrativeContentMarkers(
         roomId: narrative.id,
         kind: marker.kind,
         description: marker.description,
+        content: marker.content,
         gx: point.gx,
         gy: point.gy,
         x: point.x,
@@ -288,6 +299,13 @@ export function renderNarrativeContent(
   const markers = getNarrativeContentMarkers(ctx, narratives);
 
   markers.forEach((marker) => {
+    if (
+      marker.kind === 'enemy' ||
+      marker.kind === 'loot'
+    ) {
+      return;
+    }
+
     marker.element = drawNarrativeElementMarker(
       ctx,
       marker.kind,
@@ -297,7 +315,10 @@ export function renderNarrativeContent(
       marker.description,
     );
 
-    marker.element.setAttribute('data-content-id', marker.id);
+    marker.element.setAttribute(
+      'data-content-id',
+      marker.id,
+    );
   });
 
   return markers;

@@ -17,7 +17,7 @@ export function setupPanZoom(container: HTMLElement, target: SVGElement): PanZoo
   const apply = () => {
     target.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
     target.style.transformOrigin = '0 0';
-    container.style.cursor = scale > MIN_SCALE ? (isPanning ? 'grabbing' : 'grab') : 'default';
+    container.style.cursor = isPanning ? 'grabbing' : 'default';
   };
 
   container.addEventListener('wheel', (e) => {
@@ -39,8 +39,10 @@ export function setupPanZoom(container: HTMLElement, target: SVGElement): PanZoo
     apply();
   }, { passive: false });
 
+  container.addEventListener('contextmenu', (e) => e.preventDefault());
+
   container.addEventListener('mousedown', (e) => {
-    if (scale <= MIN_SCALE || e.button !== 0) return;
+    if (e.button !== 2) return;
     isPanning = true;
     startX = e.clientX;
     startY = e.clientY;
