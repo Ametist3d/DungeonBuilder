@@ -9,14 +9,10 @@ import {
     isEnemyCell,
     notifyHeroPositionChanged,
 } from './enemies';
-import {
-    pickupLootAt,
-} from './loot';
-
-import {
-    subscribePlayerStats,
-    type PlayerStats,
-} from './player-stats';
+import {pickupLootAt} from './loot';
+import {subscribePlayerStats, type PlayerStats,} from './player-stats';
+import {applyStepEffects, setupEnvironmentEffects,} from './environment-effects';
+import {addInventoryItem, resetInventory, type InventoryKind,} from './inventory'
 
 export type HeroClass = 'wanderer';
 
@@ -493,41 +489,58 @@ function setPickedPopup(marker: NarrativeContentMarker): void {
     marker.element.querySelector('title')?.remove();
 }
 
-function pickupAtCurrentCell(): void {
-    pickupLootAt(
-        heroState.gx,
-        heroState.gy,
-    );
 
-    const key = cellKey(
-        heroState.gx,
-        heroState.gy,
-    );
+function inventoryKindForUnlock(marker: NarrativeContentMarker): InventoryKind {
+  if (marker.kind === 'clue') {
+    return 'scroll';
+  }
+
+  if (marker.kind === 'ritualObject') {
+    return 'mechanism';
+  }
+
+  return 'key';
+}
+
+function pickupAtCurrentCell(): void {
+    pickupLootAt(heroState.gx, heroState.gy);
+
+    const key = cellKey(heroState.gx, heroState.gy);
 
     const marker = heroState.pickups.get(key);
 
-    if (
-        !marker ||
-        marker.element?.classList.contains('picked')
-    ) {
-        return;
-    }
+  if (
+    !marker ||
+    marker.element?.classList.contains('picked')
+  ) {
+    return;
+  }
 
-    const tokens = pickupTokens(marker);
+  const tokens = pickupTokens(marker);
 
-    if (!tokens.length) return;
+  if (!tokens.length) return;
 
-    tokens.forEach((token) => {
-        heroState.keys.add(token);
-    });
+  tokens.forEach((token) => {
+    heroState.keys.add(token);
+  });
 
-    setPickedPopup(marker);
+  heroState.pickups.delete(key);
 
-    console.log(
-        'picked',
-        marker.description,
-        tokens,
-    );
+  addInventoryItem({
+    id: marker.id,
+    kind: inventoryKindForUnlock(marker),
+    name:
+      marker.description.trim() ||
+      'Unlock item',
+  });
+
+  setPickedPopup(marker);
+
+  console.log(
+    'picked',
+    marker.description,
+    tokens,
+  );
 }
 
 function canMoveTo(next: Point): boolean {
@@ -553,136 +566,164 @@ function canMoveTo(next: Point): boolean {
 }
 
 export function renderHeroes(
-    ctx: RenderContext,
-    entrance: Opening | null,
-    doors: Door[] = [],
-    contentMarkers: NarrativeContentMarker[] = [],
+  ctx: RenderContext,
+  entrance: Opening | null,
+  doors: Door[] = [],
+  contentMarkers: NarrativeContentMarker[] = [],
 ): void {
-    heroState.unsubscribeStats?.();
-    heroState.unsubscribeStats = null;
+  heroState.unsubscribeStats?.();
+  heroState.unsubscribeStats = null;
 
-    if (!entrance) {
-        heroState.group = null;
-        return;
+  resetInventory();
+  setupEnvironmentEffects(contentMarkers);
+
+  if (!entrance) {
+    heroState.group = null;
+    return;
+  }
+
+  const room = ctx.byId.get(
+    entrance.roomId,
+  );
+
+  if (!room) {
+    heroState.group = null;
+    return;
+  }
+
+  const walkMap = buildWalkMap(
+    ctx,
+    doors,
+  );
+
+  const pos = nearestWalkableCell(
+    walkMap,
+    entranceHeroPosition(
+      room,
+      entrance,
+    ),
+  );
+
+  heroState.ctx = ctx;
+  heroState.gx = pos.gx;
+  heroState.gy = pos.gy;
+  heroState.walkMap = walkMap;
+  heroState.doors = doors;
+  heroState.keys = new Set();
+  heroState.pickups = new Map();
+
+  contentMarkers.forEach((marker) => {
+    if (
+      marker.kind !== 'secret' &&
+      marker.kind !== 'clue' &&
+      marker.kind !== 'ritualObject'
+    ) {
+      return;
     }
 
-    const room = ctx.byId.get(
-        entrance.roomId,
+    heroState.pickups.set(
+      cellKey(marker.gx, marker.gy),
+      marker,
+    );
+  });
+
+  heroState.group = createHeroSvg();
+
+  ctx.svg.appendChild(
+    heroState.group,
+  );
+
+  heroState.unsubscribeStats =
+    subscribePlayerStats(
+      updateHeroStats,
     );
 
-    if (!room) {
-        heroState.group = null;
-        return;
-    }
+  updateHeroTransform();
+  pickupAtCurrentCell();
 
-    const walkMap = buildWalkMap(
-        ctx,
-        doors,
-    );
+  bindHeroCombat({
+    getPosition: () => ({
+      gx: heroState.gx,
+      gy: heroState.gy,
+    }),
 
-    const pos = nearestWalkableCell(
-        walkMap,
-        entranceHeroPosition(
-            room,
-            entrance,
-        ),
-    );
+    getRoomId: currentHeroRoomId,
 
-    heroState.ctx = ctx;
-    heroState.gx = pos.gx;
-    heroState.gy = pos.gy;
-    heroState.walkMap = walkMap;
-    heroState.doors = doors;
-    heroState.keys = new Set();
-    heroState.pickups = new Map();
+    onDeath: () => {
+      heroState.group?.classList.add(
+        'hero-dead',
+      );
+    },
+  });
 
-    contentMarkers.forEach((marker) => {
-        if (marker.kind === 'loot') return;
-
-        heroState.pickups.set(
-            cellKey(marker.gx, marker.gy),
-            marker,
-        );
-    });
-
-    heroState.group = createHeroSvg();
-
-    ctx.svg.appendChild(
-        heroState.group,
-    );
-
-    heroState.unsubscribeStats =
-        subscribePlayerStats(
-            updateHeroStats,
-        );
-
-    updateHeroTransform();
-    pickupAtCurrentCell();
-
-    bindHeroCombat({
-        getPosition: () => ({
-            gx: heroState.gx,
-            gy: heroState.gy,
-        }),
-
-        getRoomId: currentHeroRoomId,
-
-        onDeath: () => {
-            heroState.group?.classList.add(
-                'hero-dead',
-            );
-        },
-    });
-
-    notifyHeroPositionChanged();
+  notifyHeroPositionChanged();
 }
 
 export function moveHero(
-    dx: number,
-    dy: number,
+  dx: number,
+  dy: number,
 ): void {
-    if (
-        !heroState.ctx ||
-        !heroState.group ||
-        !canHeroAct()
-    ) {
-        return;
-    }
+  if (
+    !heroState.ctx ||
+    !heroState.group ||
+    !canHeroAct()
+  ) {
+    return;
+  }
 
-    const next = {
-        gx: snapHalf(heroState.gx + dx * HERO_STEP),
+  const next = {
+    gx: snapHalf(
+      heroState.gx + dx * HERO_STEP,
+    ),
 
-        gy: snapHalf(heroState.gy + dy * HERO_STEP),
-    };
+    gy: snapHalf(
+      heroState.gy + dy * HERO_STEP,
+    ),
+  };
 
-    if (
-        isEnemyCell(
-            next.gx,
-            next.gy,
-        )
-    ) {
-        return;
-    }
+  if (
+    isEnemyCell(
+      next.gx,
+      next.gy,
+    )
+  ) {
+    return;
+  }
 
-    const nextRoomId = roomIdAtPoint(
-        heroState.ctx,
-        next,
+  const nextRoomId = roomIdAtPoint(
+    heroState.ctx,
+    next,
+  );
+
+  if (!canHeroMoveToRoom(nextRoomId)) {
+    return;
+  }
+
+  if (!canMoveTo(next)) {
+    return;
+  }
+
+  heroState.gx = next.gx;
+  heroState.gy = next.gy;
+
+  updateHeroTransform();
+
+  const alive = applyStepEffects(
+    heroState.gx,
+    heroState.gy,
+    nextRoomId,
+  );
+
+  if (!alive) {
+    heroState.group.classList.add(
+      'hero-dead',
     );
 
-    if (!canHeroMoveToRoom(nextRoomId)) {
-        return;
-    }
+    return;
+  }
 
-    if (!canMoveTo(next)) {
-        return;
-    }
-
-    heroState.gx = next.gx;
-    heroState.gy = next.gy;
-
-    updateHeroTransform();
-    pickupAtCurrentCell();
-    completeHeroMove();
+  pickupAtCurrentCell();
+  completeHeroMove();
 }
 
 export function setupHeroControls(): void {

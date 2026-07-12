@@ -21,6 +21,10 @@ import {
   applyLoot,
 } from './player-stats';
 
+import {
+  addLootItems,
+} from './inventory';
+
 type LootState = {
   marker: NarrativeContentMarker;
   items: LootItem[];
@@ -257,14 +261,22 @@ export function pickupLootAt(
   const key = cellKey(gx, gy);
   const loot = lootByCell.get(key);
 
-  if (!loot || loot.picked) {
+  if (
+    !loot ||
+    loot.picked
+  ) {
     return false;
   }
 
   loot.picked = true;
-  applyLoot(loot.items);
 
-  loot.element.classList.add('picked');
+  applyLoot(loot.items);
+  addLootItems(loot.items);
+
+  loot.element.classList.add(
+    'picked',
+  );
+
   lootByCell.delete(key);
   hideTooltip();
 

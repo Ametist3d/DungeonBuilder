@@ -65,7 +65,7 @@ export function setupPanZoom(container: HTMLElement, target: SVGElement): PanZoo
     apply();
   });
 
-  container.addEventListener('dblclick', () => reset());
+  // container.addEventListener('dblclick', () => reset());
 
   const reset = () => {
     scale = 1;
