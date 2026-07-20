@@ -25,17 +25,11 @@ interface InventoryEntry {
   quantity: number;
 }
 
-const inventory = new Map<
-  string,
-  InventoryEntry
->();
+const inventory = new Map<string, InventoryEntry>();
 
 let collapsed = false;
 
-const KIND_LABELS: Record<
-  InventoryKind,
-  string
-> = {
+const KIND_LABELS: Record<InventoryKind, string> = {
   key: 'Key',
   scroll: 'Scroll',
   mechanism: 'Mechanism',
@@ -48,9 +42,7 @@ const KIND_LABELS: Record<
 };
 
 function getPanel(): HTMLDivElement {
-  let panel = document.getElementById(
-    'inventory-panel',
-  ) as HTMLDivElement | null;
+  let panel = document.getElementById('inventory-panel') as HTMLDivElement | null;
 
   if (panel) return panel;
 
@@ -74,25 +66,19 @@ function getPanel(): HTMLDivElement {
     </div>
   `;
 
-  const toggle = panel.querySelector(
-    '.inventory-toggle',
-  ) as HTMLButtonElement;
+  const toggle = panel.querySelector('.inventory-toggle') as HTMLButtonElement;
 
   toggle.addEventListener('click', () => {
     collapsed = !collapsed;
     renderInventory();
   });
 
-  document
-    .getElementById('canvas-wrap')
-    ?.appendChild(panel);
+  document.getElementById('canvas-wrap')?.appendChild(panel);
 
   return panel;
 }
 
-function valueText(
-  entry: InventoryEntry,
-): string {
+function valueText(entry: InventoryEntry): string {
   if (entry.value === undefined) {
     return '';
   }
@@ -121,31 +107,14 @@ function valueText(
 function renderInventory(): void {
   const panel = getPanel();
 
-  panel.classList.toggle(
-    'inventory-collapsed',
-    collapsed,
-  );
+  panel.classList.toggle('inventory-collapsed', collapsed);
 
-  const toggle = panel.querySelector(
-    '.inventory-toggle',
-  ) as HTMLButtonElement;
+  const toggle = panel.querySelector('.inventory-toggle') as HTMLButtonElement;
+  const icon = panel.querySelector('.inventory-toggle-icon') as HTMLSpanElement;
+  const list = panel.querySelector('.inventory-list') as HTMLUListElement;
+  const empty = panel.querySelector('.inventory-empty') as HTMLParagraphElement;
 
-  const icon = panel.querySelector(
-    '.inventory-toggle-icon',
-  ) as HTMLSpanElement;
-
-  const list = panel.querySelector(
-    '.inventory-list',
-  ) as HTMLUListElement;
-
-  const empty = panel.querySelector(
-    '.inventory-empty',
-  ) as HTMLParagraphElement;
-
-  toggle.setAttribute(
-    'aria-expanded',
-    String(!collapsed),
-  );
+  toggle.setAttribute('aria-expanded', String(!collapsed));
 
   icon.textContent = collapsed
     ? '▸'
@@ -191,26 +160,18 @@ export function resetInventory(): void {
   renderInventory();
 }
 
-export function addInventoryItem(
-  item: InventoryItemInput,
-): void {
+export function addInventoryItem(item: InventoryItemInput): void {
   const existing = inventory.get(item.id);
 
   if (existing) {
-    existing.quantity += Math.max(
-      1,
-      item.quantity || 1,
-    );
+    existing.quantity += Math.max(1, item.quantity || 1);
   } else {
     inventory.set(item.id, {
       id: item.id,
       kind: item.kind,
       name: item.name,
       value: item.value,
-      quantity: Math.max(
-        1,
-        item.quantity || 1,
-      ),
+      quantity: Math.max(1, item.quantity || 1),
     });
   }
 

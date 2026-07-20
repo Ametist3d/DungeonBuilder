@@ -253,22 +253,14 @@ function addDirectRoomDoorEdges(ctx: RenderContext, map: WalkMap): void {
             const hi = Math.min(parent.y + parent.h, room.y + room.h);
             const gy = Math.floor((lo + hi) / 2) + 0.5;
 
-            addEdge(
-                map,
-                { gx: wallX + wallDir.gx * 0.5, gy },
-                { gx: wallX - wallDir.gx * 0.5, gy },
-            );
+            addEdge(map, { gx: wallX + wallDir.gx * 0.5, gy }, { gx: wallX - wallDir.gx * 0.5, gy });
         } else {
             const wallY = room.entranceDir === 'N' ? room.y : room.y + room.h;
             const lo = Math.max(parent.x, room.x);
             const hi = Math.min(parent.x + parent.w, room.x + room.w);
             const gx = Math.floor((lo + hi) / 2) + 0.5;
 
-            addEdge(
-                map,
-                { gx, gy: wallY + wallDir.gy * 0.5 },
-                { gx, gy: wallY - wallDir.gy * 0.5 },
-            );
+            addEdge(map, { gx, gy: wallY + wallDir.gy * 0.5 }, { gx, gy: wallY - wallDir.gy * 0.5 });
         }
     }
 }
@@ -390,14 +382,8 @@ function updateHeroTransform(): void {
 }
 
 
-function updateHeroRing(
-    selector: string,
-    current: number,
-    maximum: number,
-): void {
-    const ring = heroState.group?.querySelector(
-        selector,
-    ) as SVGCircleElement | null;
+function updateHeroRing(selector: string, current: number, maximum: number): void {
+    const ring = heroState.group?.querySelector(selector) as SVGCircleElement | null;
 
     if (!ring) return;
 
@@ -410,20 +396,9 @@ function updateHeroRing(
     ring.style.opacity = percent > 0 ? '1' : '0';
 }
 
-function updateHeroStats(
-    stats: PlayerStats,
-): void {
-    updateHeroRing(
-        '.hero-hp-ring',
-        stats.hp,
-        stats.maxHp,
-    );
-
-    updateHeroRing(
-        '.hero-mana-ring',
-        stats.mp,
-        stats.maxMp,
-    );
+function updateHeroStats(stats: PlayerStats): void {
+    updateHeroRing('.hero-hp-ring', stats.hp, stats.maxHp);
+    updateHeroRing('.hero-mana-ring', stats.mp, stats.maxMp);
 }
 
 function normalizeToken(value: string): string {
@@ -526,21 +501,11 @@ function pickupAtCurrentCell(): void {
 
   heroState.pickups.delete(key);
 
-  addInventoryItem({
-    id: marker.id,
-    kind: inventoryKindForUnlock(marker),
-    name:
-      marker.description.trim() ||
-      'Unlock item',
-  });
+  addInventoryItem({ id: marker.id, kind: inventoryKindForUnlock(marker), name: marker.description.trim() || 'Unlock item' });
 
   setPickedPopup(marker);
 
-  console.log(
-    'picked',
-    marker.description,
-    tokens,
-  );
+  console.log('picked', marker.description, tokens);
 }
 
 function canMoveTo(next: Point): boolean {
@@ -551,10 +516,7 @@ function canMoveTo(next: Point): boolean {
     const edge = edgeKey(current, next);
     const blockedDoor = map.blockedDoors.get(edge);
 
-    if (
-        !map.cells.has(pointKey(next)) ||
-        !map.edges.has(edge)
-    ) {
+    if (!map.cells.has(pointKey(next)) || !map.edges.has(edge)) {
         return false;
     }
 
@@ -582,27 +544,15 @@ export function renderHeroes(
     return;
   }
 
-  const room = ctx.byId.get(
-    entrance.roomId,
-  );
+  const room = ctx.byId.get(entrance.roomId);
 
   if (!room) {
     heroState.group = null;
     return;
   }
 
-  const walkMap = buildWalkMap(
-    ctx,
-    doors,
-  );
-
-  const pos = nearestWalkableCell(
-    walkMap,
-    entranceHeroPosition(
-      room,
-      entrance,
-    ),
-  );
+  const walkMap = buildWalkMap(ctx, doors);
+  const pos = nearestWalkableCell(walkMap, entranceHeroPosition(room, entrance));
 
   heroState.ctx = ctx;
   heroState.gx = pos.gx;
@@ -621,22 +571,14 @@ export function renderHeroes(
       return;
     }
 
-    heroState.pickups.set(
-      cellKey(marker.gx, marker.gy),
-      marker,
-    );
+      heroState.pickups.set(cellKey(marker.gx, marker.gy), marker);
   });
 
   heroState.group = createHeroSvg();
 
-  ctx.svg.appendChild(
-    heroState.group,
-  );
+  ctx.svg.appendChild(heroState.group);
 
-  heroState.unsubscribeStats =
-    subscribePlayerStats(
-      updateHeroStats,
-    );
+  heroState.unsubscribeStats = subscribePlayerStats(updateHeroStats);
 
   updateHeroTransform();
   pickupAtCurrentCell();
@@ -650,50 +592,28 @@ export function renderHeroes(
     getRoomId: currentHeroRoomId,
 
     onDeath: () => {
-      heroState.group?.classList.add(
-        'hero-dead',
-      );
+      heroState.group?.classList.add('hero-dead');
     },
   });
 
   notifyHeroPositionChanged();
 }
 
-export function moveHero(
-  dx: number,
-  dy: number,
-): void {
-  if (
-    !heroState.ctx ||
-    !heroState.group ||
-    !canHeroAct()
-  ) {
+export function moveHero(dx: number, dy: number): void {
+  if (!heroState.ctx || !heroState.group || !canHeroAct()) {
     return;
   }
 
   const next = {
-    gx: snapHalf(
-      heroState.gx + dx * HERO_STEP,
-    ),
-
-    gy: snapHalf(
-      heroState.gy + dy * HERO_STEP,
-    ),
+    gx: snapHalf(heroState.gx + dx * HERO_STEP),
+    gy: snapHalf(heroState.gy + dy * HERO_STEP),
   };
 
-  if (
-    isEnemyCell(
-      next.gx,
-      next.gy,
-    )
-  ) {
+  if (isEnemyCell(next.gx, next.gy)) {
     return;
   }
 
-  const nextRoomId = roomIdAtPoint(
-    heroState.ctx,
-    next,
-  );
+  const nextRoomId = roomIdAtPoint(heroState.ctx, next);
 
   if (!canHeroMoveToRoom(nextRoomId)) {
     return;
@@ -708,16 +628,10 @@ export function moveHero(
 
   updateHeroTransform();
 
-  const alive = applyStepEffects(
-    heroState.gx,
-    heroState.gy,
-    nextRoomId,
-  );
+  const alive = applyStepEffects(heroState.gx, heroState.gy, nextRoomId);
 
   if (!alive) {
-    heroState.group.classList.add(
-      'hero-dead',
-    );
+    heroState.group.classList.add('hero-dead');
 
     return;
   }

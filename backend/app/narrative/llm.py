@@ -158,9 +158,11 @@ Your job:
 Topology guidance:
 - hub rooms are social spaces, decision points, ritual centers, ambush zones,
   or places where factions collide.
-- dead ends hide secrets, treasure, prisoners, traps, revelations, or final threats.
+- dead ends hide secrets, treasure, prisoners, revelations, or final threats.
 - main-path rooms advance the core story.
-- branch rooms are optional discoveries, side clues, risks, or rewards.
+- branch rooms are optional discoveries, keys or rewards.
+- Every content item must include placement and corridorId.
+
 
 Write evocative GM-facing prose.
 Prioritize story, atmosphere, motives, discoveries, consequences, and playable hooks.
@@ -197,6 +199,9 @@ class NarrativeContent(BaseModel):
     hp: int | None = Field(None, ge=1)
 
     loot: list[NarrativeLootItem] = Field(default_factory=list)
+
+    placement: Literal["room", "corridor"] = "room"
+    corridor_id: str | None = Field(None, alias="corridorId")
 
 
 class RoomNarrative(BaseModel):
@@ -240,7 +245,7 @@ Rules:
 - Each room has 1-3 content items.
 - content.type: loot, enemy, trap, npc, hazard.
 - Every content item needs:
-  type, quantity, description, enemyType, difficulty, hp, loot.
+  type, quantity, description, enemyType, difficulty, hp, loot, placement, corridorId.
 
 Enemy items:
 - enemyType: melee, ranged, or mage.
@@ -263,6 +268,20 @@ Loot items:
 - spell value: 0.
 - hpPotion value: 2-20 restored HP.
 - manaPotion value: 2-10 restored MP.
+Placement rules:
+- Traps must always use placement="corridor".
+- Traps must use a valid corridorId from graph field c.
+- The selected corridor must touch the room containing the trap content.
+- Never place traps inside rooms.
+- Enemy, hazard, loot, and npc content must use placement="room" and corridorId=null.
+- In a room without flag d, every enemy or hazard must be paired with loot in the same room.
+- Dead-end rooms with flag d may contain an enemy or hazard without loot.
+- Hazards are guards, not ambient decoration.
+- Every hazard must protect at least one loot item in the same room.
+- Name or clearly reference that protected reward in the hazard description.
+- Never create a hazard in a room without loot.
+- Use at most one hazard per room.
+- Enemy, hazard, loot, and npc content use placement="room" and corridorId=null.
 
 Non-loot content:
 - loot must be [].
@@ -339,8 +358,19 @@ Loot item:
   "description": "short description"
 }}
 
+- Every content item includes placement and corridorId.
+- Traps always use placement="corridor".
+- Traps use a valid adjacent corridorId from graph field c.
+- Traps are never placed inside rooms.
+- All non-trap content uses placement="room" and corridorId=null.
+- Non-dead-end rooms containing enemy or hazard must also contain loot.
+- Hazards are only allowed in rooms containing loot.
+- Every hazard protects that loot and references it in its description.
+- Never create an unguarded or decorative hazard.
+- Use at most one hazard per room.
+
 Do not include flags or additional fields.
-Keep descriptions under 120 characters.
+Keep descriptions under 180 characters.
 
 {_lock_rule(context)}
 
@@ -458,71 +488,15 @@ def _llm_context(context: dict) -> dict:
     story_context["k"] = (
         "room=[id,depth,flags,links]; "
         "flags m=main h=hub d=dead a=accent; "
-        "links 5c=corridor to room5, 5b=branch to room5"
+        "links 5c=corridor to room5, 5b=branch to room5; "
+        "c=[corridorId,parentRoom,childRoom]"
     )
 
     story_context["r"] = [row[:4] for row in context.get("r", [])]
-
     return story_context
 
 
 def _ollama_chat(context: dict) -> str:
-    # room_ids = _room_ids_csv(context)
-
-    #     prompt = f"""
-    # Create a story-first fantasy tabletop dungeon scenario from this compact graph.
-
-    # Use the graph only to infer pacing and room importance.
-    # Do NOT describe room geometry, size, shape, coordinates, corridors, entrances, or visible layout.
-    # The player already sees the map.
-
-    # Return JSON only:
-
-    # {{
-    #   "title": "short evocative dungeon title",
-    #   "premise": "story summary with hook, conflict, twist, climax, and possible endings",
-    #   "rooms": [
-    #     {{
-    #       "id": 0,
-    #       "label": "3-5 word story/location name",
-    #       "mapLabel": "short in-world callout, max {MAX_MAP_LABEL_CHARS} chars",
-    #       "description": "1-3 story-rich GM sentences, max {MAX_DESCRIPTION_CHARS} chars",
-    #       "content": [Dungeon graph:
-    #         {{
-    #           "type": "loot",
-    #           "quantity": 1,
-    #           "description": "max {MAX_CONTENT_DESCRIPTION_CHARS} chars, what it is and why it matters"
-    #         }}
-    #       ]
-    #     }}
-    #   ]
-    # }}
-
-    # Rules:
-    # - Return valid JSON only. No markdown. No prose outside JSON.
-    # - Include exactly these room ids: [{room_ids}]
-    # - Every room must have id, label, mapLabel, description, content.
-    # - Do not invent, skip, rename, or duplicate room ids.
-    # - Do not return placeholders or generic names like Unnamed Room.
-    # - Focus on story events, secrets, threats, NPC motives, clues, rituals, consequences, and rewards.
-    # - Avoid describing room size, shape, coordinates, doors, entrances, exits, corridors, or map layout unless needed for story.
-    # - mapLabel should be an atmospheric clue or hook, not a geometry note.
-    # - description should tell what happens here, what can be discovered, and why it matters.
-    # - content must contain 1-3 objects.
-    # - content.type must be one of: loot, enemy, trap, npc, clue, ritualObject, hazard, secret.
-    # - content.quantity must be integer 1-3.
-    # - content.description should be a practical GM note tied to scenario lore.
-    # - Mention or clearly imply each content item in the room description.
-    # - Use hub/dead/main/depth/connectivity only to decide narrative role, not to describe layout.
-    # - If room.closedDoors exists, make those doors meaningful obstacles: key, seal, curse, guard, puzzle, ritual, or clue.
-    # - Place keys, unlock mechanisms, or other unlock tools in any room with ID different from the room with closed doors they unlock.
-    # - Never put keys, unlock mechanisms or other unlock tools in same room ID that contains those closed doors they should unlock.
-    # - Never describe the dungeon entrance as closed.
-
-    # Compact graph:
-    # {_context_json(context)}
-    # """.strip()
-
     prompt = _main_prompt(context)
 
     payload = {
@@ -699,19 +673,10 @@ def _coerce_loot_items(
 
         result.append(
             NarrativeLootItem(
-                name=_compact_text(
-                    item.get("name") or kind,
-                    48,
-                ),
+                name=_compact_text(item.get("name") or kind, 48),
                 type=kind,
-                value=_coerce_loot_value(
-                    kind,
-                    item.get("value"),
-                ),
-                description=_compact_text(
-                    item.get("description") or "",
-                    MAX_CONTENT_DESCRIPTION_CHARS,
-                ),
+                value=_coerce_loot_value(kind, item.get("value")),
+                description=_compact_text(item.get("description") or "", MAX_CONTENT_DESCRIPTION_CHARS),
             )
         )
 
@@ -720,10 +685,7 @@ def _coerce_loot_items(
 
     return [
         NarrativeLootItem(
-            name=_compact_text(
-                fallback_description or "Forgotten coin cache",
-                48,
-            ),
+            name=_compact_text(fallback_description or "Forgotten coin cache", 48),
             type="treasure",
             value=10,
             description="A small cache of valuables.",
@@ -737,63 +699,61 @@ def _coerce_content(value: Any) -> list[NarrativeContent]:
 
     items = value if isinstance(value, list) else [value]
     result: list[NarrativeContent] = []
-    loot: list[NarrativeLootItem] = []
 
     for item in items:
         description = ""
         enemy_type = None
         difficulty = None
         hp = None
+        loot: list[NarrativeLootItem] = []
+        corridor_id: str | None = None
 
         if isinstance(item, str):
             kind = _content_type(item)
             quantity = 1
 
         elif isinstance(item, dict):
-            kind = _content_type(
-                item.get("type") or item.get("kind") or item.get("element")
-            )
+            kind = _content_type(item.get("type") or item.get("kind") or item.get("element"))
             quantity = _coerce_quantity(item.get("quantity", 1))
+
             description = _compact_text(
-                item.get("description")
-                or item.get("desc")
-                or item.get("purpose")
-                or "",
+                item.get("description") or item.get("desc") or item.get("purpose") or "",
                 MAX_CONTENT_DESCRIPTION_CHARS,
             )
 
             if kind == "loot":
                 quantity = 1
-                loot = _coerce_loot_items(
-                    item.get("loot"),
-                    description,
-                )
+                loot = _coerce_loot_items(item.get("loot"), description)
 
             if kind == "enemy":
-                enemy_type = _coerce_enemy_type(
-                    item.get("enemyType") or item.get("enemy_type")
-                )
+                enemy_type = _coerce_enemy_type(item.get("enemyType") or item.get("enemy_type"))
                 difficulty = _coerce_enemy_difficulty(item.get("difficulty"))
                 hp = ENEMY_HP[difficulty]
+
+            if kind == "trap":
+                corridor_id = _text(item.get("corridorId") or item.get("corridor_id")) or None
 
         else:
             continue
 
-        if kind in STORY_CONTENT_TYPES and not UNLOCK_WORD_RE.search(description):
-            result.append(
-                NarrativeContent(
-                    type=kind,
-                    quantity=quantity,
-                    description=description,
-                    enemy_type=enemy_type,
-                    difficulty=difficulty,
-                    hp=hp,
-                    loot=loot,
-                )
+        if kind not in STORY_CONTENT_TYPES or UNLOCK_WORD_RE.search(description):
+            continue
+
+        result.append(
+            NarrativeContent(
+                type=kind,
+                quantity=quantity,
+                description=description,
+                enemy_type=enemy_type,
+                difficulty=difficulty,
+                hp=hp,
+                loot=loot,
+                placement="corridor" if kind == "trap" else "room",
+                corridor_id=corridor_id if kind == "trap" else None,
             )
+        )
 
     return result
-
 
 def _lock_content_type(lock: str) -> str:
     if lock == "magicSealed":
@@ -803,31 +763,6 @@ def _lock_content_type(lock: str) -> str:
         return "ritualObject"
 
     return "secret"
-
-
-def _is_generated_unlock_duplicate(
-    item: NarrativeContent, required_names: set[str], required_door_ids: set[str]
-) -> bool:
-    text = (item.description or "").lower()
-
-    if any(name and name in text for name in required_names):
-        return True
-
-    if any(door_id and door_id in text for door_id in required_door_ids):
-        return True
-
-    if re.search(r"\broom\s+\d+\s+door\b", text):
-        return True
-
-    if re.search(
-        r"\b(unlock|opens?|seals?|sealed|mechanism|key|scroll)\b.*\bdoor\b", text
-    ):
-        return True
-
-    if re.search(r"\bdoor\b.*\b(room|key|scroll|mechanism)\b", text):
-        return True
-
-    return False
 
 
 def _ensure_lock_content(result: DungeonNarrative, context: dict) -> None:
@@ -847,10 +782,7 @@ def _ensure_lock_content(result: DungeonNarrative, context: dict) -> None:
         ) = row
 
         key_room_id = int(key_room)
-        key_name = _compact_text(
-            key_name or f"Room {door_room} door {door_id} {material} key",
-            64,
-        )
+        key_name = _compact_text(key_name or f"Room {door_room} door {door_id} {material} key", 64)
         key_type = str(key_type or _lock_content_type(str(lock)))
 
         required_by_room.setdefault(key_room_id, []).append(
@@ -882,10 +814,7 @@ def _coerce_room(item: Any, fallback_id: int | None = None) -> RoomNarrative | N
     except (TypeError, ValueError):
         return None
 
-    label = _compact_text(
-        item.get("label") or item.get("name") or item.get("title") or "Unnamed Chamber",
-        42,
-    )
+    label = _compact_text(item.get("label") or item.get("name") or item.get("title") or "Unnamed Chamber", 42)
 
     description = _compact_text(
         item.get("description")
@@ -926,24 +855,14 @@ def _coerce_narrative_root(parsed: Any) -> dict[str, Any]:
     raise RuntimeError(f"Invalid narrative root type: {type(parsed).__name__}")
 
 
-def _normalize_narrative(
-    parsed: Any,
-    context: dict,
-) -> DungeonNarrative:
+def _normalize_narrative(parsed: Any, context: dict) -> DungeonNarrative:
     parsed = _coerce_narrative_root(parsed)
 
     expected_ids = _room_ids(context)
     expected_set = set(expected_ids)
 
-    title = _text(
-        parsed.get("title"),
-        "Unnamed Dungeon",
-    )
-
-    premise = _text(
-        parsed.get("premise") or parsed.get("hook"),
-        "A newly discovered dungeon waits below.",
-    )
+    title = _text(parsed.get("title"), "Unnamed Dungeon")
+    premise = _text(parsed.get("premise") or parsed.get("hook"), "A newly discovered dungeon waits below.")
 
     raw_rooms = parsed.get("rooms", [])
     rooms: list[RoomNarrative] = []
@@ -960,11 +879,7 @@ def _normalize_narrative(
     elif isinstance(raw_rooms, list):
         for index, item in enumerate(raw_rooms):
             fallback_id = expected_ids[index] if index < len(expected_ids) else None
-
-            room = _coerce_room(
-                item,
-                fallback_id,
-            )
+            room = _coerce_room(item, fallback_id)
 
             if room:
                 rooms.append(room)
@@ -985,16 +900,196 @@ def _normalize_narrative(
         if rid not in returned_ids
     )
 
-    rooms.sort(
-        key=lambda room: room.id,
+    rooms.sort(key=lambda room: room.id)
+
+    return DungeonNarrative(title=title, premise=premise, rooms=rooms)
+
+def _corridor_ids_by_room(context: dict) -> dict[int, list[str]]:
+    result: dict[int, list[str]] = {}
+
+    for row in context.get("c", []):
+        if len(row) < 3:
+            continue
+
+        corridor_id = str(row[0])
+        parent_id = int(row[1])
+        child_id = int(row[2])
+
+        result.setdefault(parent_id, []).append(corridor_id)
+        result.setdefault(child_id, []).append(corridor_id)
+
+    return result
+
+
+def _normalize_content_placements(
+    result: DungeonNarrative,
+    context: dict,
+) -> None:
+    corridors_by_room = _corridor_ids_by_room(context)
+
+    for room in result.rooms:
+        available = corridors_by_room.get(room.id, [])
+        normalized: list[NarrativeContent] = []
+        trap_index = 0
+
+        for item in room.content:
+            if item.type != "trap":
+                item.placement = "room"
+                item.corridor_id = None
+                normalized.append(item)
+                continue
+
+            if not available:
+                continue
+
+            item.placement = "corridor"
+
+            if item.corridor_id not in available:
+                item.corridor_id = available[trap_index % len(available)]
+
+            trap_index += 1
+            normalized.append(item)
+
+        room.content = normalized
+
+
+def _ensure_corridor_traps(
+    result: DungeonNarrative,
+    context: dict,
+) -> None:
+    corridors = [row for row in context.get("c", []) if len(row) >= 3]
+
+    if not corridors:
+        return
+
+    existing = {
+        item.corridor_id
+        for room in result.rooms
+        for item in room.content
+        if item.type == "trap" and item.corridor_id
+    }
+
+    target = min(3, max(1, len(corridors) // 4))
+    rooms_by_id = {room.id: room for room in result.rooms}
+
+    for row in corridors:
+        if len(existing) >= target:
+            break
+
+        corridor_id = str(row[0])
+
+        if corridor_id in existing:
+            continue
+
+        parent_id = int(row[1])
+        child_id = int(row[2])
+        owner = rooms_by_id.get(child_id) or rooms_by_id.get(parent_id)
+
+        if not owner:
+            continue
+
+        owner.content.append(
+            NarrativeContent(
+                type="trap",
+                quantity=1,
+                description="A concealed pressure plate releases a violent mechanical strike.",
+                placement="corridor",
+                corridor_id=corridor_id,
+            )
+        )
+
+        existing.add(corridor_id)
+
+def _fallback_hazard_reward(
+    hazard: NarrativeContent,
+) -> NarrativeContent:
+    description = _compact_text(
+        f"A sealed cache protected by {hazard.description or 'the room hazard'}.",
+        MAX_CONTENT_DESCRIPTION_CHARS,
     )
 
-    return DungeonNarrative(
-        title=title,
-        premise=premise,
-        rooms=rooms,
+    return NarrativeContent(
+        type="loot",
+        quantity=1,
+        description=description,
+        enemy_type=None,
+        difficulty=None,
+        hp=None,
+        loot=[
+            NarrativeLootItem(
+                name="Hazard-Sealed Cache",
+                type="treasure",
+                value=25,
+                description="Valuables left behind by victims of the surrounding danger.",
+            )
+        ],
+        placement="room",
+        corridor_id=None,
     )
 
+
+def _ensure_hazard_rewards(
+    result: DungeonNarrative,
+) -> None:
+    for room in result.rooms:
+        hazards = [
+            item
+            for item in room.content
+            if item.type == "hazard"
+        ]
+
+        if not hazards:
+            continue
+
+        hazard = hazards[0]
+
+        unlocks = [
+            item
+            for item in room.content
+            if item.type in UNLOCK_CONTENT_TYPES
+        ]
+
+        loot = [
+            item
+            for item in room.content
+            if item.type == "loot"
+        ]
+
+        others = [
+            item
+            for item in room.content
+            if item.type not in {
+                "hazard",
+                "loot",
+                *UNLOCK_CONTENT_TYPES,
+            }
+        ]
+
+        if unlocks:
+            reward_name = unlocks[0].description or "the required unlock item"
+
+        elif loot:
+            reward_name = (
+                loot[0].loot[0].name
+                if loot[0].loot
+                else loot[0].description or "the guarded reward"
+            )
+
+        else:
+            reward = _fallback_hazard_reward(hazard)
+            loot = [reward]
+            reward_name = reward.loot[0].name
+
+        hazard.description = _compact_text(
+            f"{hazard.description or 'A dangerous environmental threat'} protects {reward_name}.",
+            MAX_CONTENT_DESCRIPTION_CHARS,
+        )
+
+        hazard.quantity = 1
+        hazard.placement = "room"
+        hazard.corridor_id = None
+
+        room.content = unlocks + [hazard] + loot + others
 
 def generate_narrative(
     context: dict, provider: LLMProvider = "local"
@@ -1045,7 +1140,11 @@ def generate_narrative(
             for rid in missing
         )
 
+    _normalize_content_placements(result, context)
+    _ensure_corridor_traps(result, context)
     _ensure_lock_content(result, context)
+    _ensure_hazard_rewards(result)
+    
     expected_unlocks = len(_lock_rows(context))
     actual_unlocks = sum(
         1

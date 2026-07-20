@@ -174,10 +174,7 @@ function drawDoor(
         bar.setAttribute('y2', String(glyphPy));
       }
 
-      bar.setAttribute(
-        'class',
-        `door-closed-bar door-${door.material} door-${door.lock}`,
-      );
+      bar.setAttribute('class', `door-closed-bar door-${door.material} door-${door.lock}`);
       bar.setAttribute('data-door-id', door.id);
 
       bindDoorTooltip(bar, door);
@@ -306,20 +303,10 @@ export function renderDoors(
     const pts = c.points;
 
     if (!c.branchesFromCorridor) {
-      drawCorridorDoor(
-        ctx,
-        pts[0],
-        pts[1],
-        findDoor(doorMap, c.parentId, c.childId, c.parentId),
-      );
+      drawCorridorDoor(ctx, pts[0], pts[1], findDoor(doorMap, c.parentId, c.childId, c.parentId));
     }
 
-    drawCorridorDoor(
-      ctx,
-      pts[pts.length - 1],
-      pts[pts.length - 2],
-      findDoor(doorMap, c.parentId, c.childId, c.childId),
-    );
+    drawCorridorDoor(ctx, pts[pts.length - 1], pts[pts.length - 2], findDoor(doorMap, c.parentId, c.childId, c.childId));
   }
 
   // rooms directly flush against their tree parent (no corridor) get one door each

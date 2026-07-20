@@ -113,10 +113,7 @@ function distance(a: Point, b: Point): number {
 }
 
 function attackDistance(a: Point, b: Point): number {
-  return Math.max(
-    Math.abs(a.gx - b.gx),
-    Math.abs(a.gy - b.gy),
-  );
+  return Math.max(Math.abs(a.gx - b.gx), Math.abs(a.gy - b.gy));
 }
 
 function enemyAt(gx: number, gy: number, ignoreId = ''): EnemyState | null {
@@ -139,11 +136,7 @@ function updateCombatStatus(): void {
         ? 'Player turn'
         : 'Enemy turn';
 
-  setPlayerStatus(
-    text,
-    state.activeRoomId !== null,
-    defeated,
-  );
+  setPlayerStatus(text, state.activeRoomId !== null, defeated);
 }
 
 
@@ -197,10 +190,7 @@ function hideTooltip(): void {
 function createEnemySvg(enemy: EnemyState): SVGGElement {
   const group = document.createElementNS(NS, 'g');
 
-  group.setAttribute(
-    'class',
-    `enemy-token enemy-${enemy.difficulty} enemy-${enemy.type}`,
-  );
+  group.setAttribute('class', `enemy-token enemy-${enemy.difficulty} enemy-${enemy.type}`);
 
   group.setAttribute('data-enemy-id', enemy.id);
 
@@ -294,43 +284,16 @@ function createEnemySvg(enemy: EnemyState): SVGGElement {
 function updateEnemyElement(enemy: EnemyState): void {
   if (!state.ctx) return;
 
-  const [x, y] = state.ctx.toPx(
-    enemy.gx,
-    enemy.gy,
-  );
+  const [x, y] = state.ctx.toPx(enemy.gx, enemy.gy);
+  enemy.element.setAttribute('transform', `translate(${x} ${y})`);
+  enemy.element.classList.toggle('enemy-active', enemy.active && enemy.hp > 0);
+  enemy.element.classList.toggle('enemy-defeated', enemy.hp <= 0);
 
-  enemy.element.setAttribute(
-    'transform',
-    `translate(${x} ${y})`,
-  );
-
-  enemy.element.classList.toggle(
-    'enemy-active',
-    enemy.active && enemy.hp > 0,
-  );
-
-  enemy.element.classList.toggle(
-    'enemy-defeated',
-    enemy.hp <= 0,
-  );
-
-  const hpRing = enemy.element.querySelector(
-    '.enemy-hp-ring',
-  ) as SVGCircleElement | null;
-
+  const hpRing = enemy.element.querySelector('.enemy-hp-ring') as SVGCircleElement | null;
   if (!hpRing) return;
 
-  const hpPercent = Math.max(
-    0,
-    Math.min(
-      100,
-      enemy.hp / enemy.maxHp * 100,
-    ),
-  );
-
-  hpRing.style.strokeDasharray =
-    `${hpPercent} 100`;
-
+  const hpPercent = Math.max(0, Math.min(100, enemy.hp / enemy.maxHp * 100));
+  hpRing.style.strokeDasharray = `${hpPercent} 100`;
   hpRing.style.strokeDashoffset = '0';
 }
 
@@ -472,10 +435,7 @@ function tryPlayerAttack(enemy: EnemyState): void {
     return;
   }
 
-  enemy.hp = Math.max(
-    0,
-    enemy.hp - getPlayerStats().attack,
-  );
+  enemy.hp = Math.max(0, enemy.hp - getPlayerStats().attack);
 
   updateEnemyElement(enemy);
 
@@ -548,9 +508,7 @@ export function renderEnemies(
     ctx.svg.appendChild(enemy.element);
     updateEnemyElement(enemy);
 
-    const marker = markers.find(
-      (item) => item.id === enemy.id,
-    );
+    const marker = markers.find((item) => item.id === enemy.id);
 
     if (marker) {
       marker.element = enemy.element;
@@ -560,9 +518,7 @@ export function renderEnemies(
   updateCombatStatus();
 }
 
-export function bindHeroCombat(
-  hero: HeroBridge,
-): void {
+export function bindHeroCombat(hero: HeroBridge): void {
   state.hero = hero;
 }
 
@@ -579,10 +535,7 @@ export function completeHeroMove(): void {
 }
 
 export function canHeroAct(): boolean {
-  return (
-    state.phase === 'player' &&
-    getPlayerStats().hp > 0
-  );
+  return state.phase === 'player' && getPlayerStats().hp > 0;
 }
 
 export function canHeroMoveToRoom(roomId: number | null): boolean {

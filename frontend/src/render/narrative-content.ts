@@ -23,6 +23,8 @@ type MarkerItem = {
   kind: NarrativeElementKind;
   description: string;
   content: NarrativeContent;
+  placement: 'room' | 'corridor';
+  corridorId: string | null;
 };
 
 export interface NarrativeContentMarker {
@@ -31,6 +33,8 @@ export interface NarrativeContentMarker {
   kind: NarrativeElementKind;
   description: string;
   content: NarrativeContent;
+  placement: 'room' | 'corridor';
+  corridorId: string | null;
   gx: number;
   gy: number;
   x: number;
@@ -83,34 +87,39 @@ function isGeneratedUnlockDuplicate(description: string): boolean {
   );
 }
 
-function expandContent(room: RoomNarrative, capacity: number): MarkerItem[] {
+function expandContent(
+  room: RoomNarrative,
+  capacity: number,
+): MarkerItem[] {
   const required: MarkerItem[] = [];
   const optional: MarkerItem[] = [];
+  const corridorTraps: MarkerItem[] = [];
 
   for (const item of room.content || []) {
     const kind = normalizeNarrativeElementKind(item.type);
     if (!kind) continue;
 
-    const quantity =
-      kind === 'loot'
-        ? 1
-        : isUnlockDescription(
-            String(item.description || ''),
-          )
-          ? 1
-          : clamp(
-              Math.round(Number(item.quantity || 1)),
-              1,
-              3,
-            );
-
     const description = String(item.description || '').trim();
     if (isGeneratedUnlockDuplicate(description)) continue;
-    
-    for (let i = 0; i < quantity; i++) {
-      const marker = { kind, description, content: item };
 
-      if (isUnlockDescription(description)) {
+    const quantity = isUnlockDescription(description)
+      ? 1
+      : clamp(Math.round(Number(item.quantity || 1)), 1, 3);
+
+    const placement = kind === 'trap' ? 'corridor' : 'room';
+
+    for (let index = 0; index < quantity; index++) {
+      const marker: MarkerItem = {
+        kind,
+        description,
+        content: item,
+        placement,
+        corridorId: placement === 'corridor' ? item.corridorId || null : null,
+      };
+
+      if (placement === 'corridor') {
+        corridorTraps.push(marker);
+      } else if (isUnlockDescription(description)) {
         required.push(marker);
       } else {
         optional.push(marker);
@@ -118,7 +127,8 @@ function expandContent(room: RoomNarrative, capacity: number): MarkerItem[] {
     }
   }
 
-  return [...required, ...optional].slice(0, Math.max(required.length, capacity));
+  const optionalCapacity = Math.max(0, capacity - required.length);
+  return [...required, ...optional.slice(0, optionalCapacity), ...corridorTraps];
 }
 
 function pointFitsRoom(room: Room, px: number, py: number, roomPx: Point, w: number, h: number): boolean {
@@ -254,11 +264,75 @@ function pickMarkerPoints(ctx: RenderContext, room: Room, count: number): Point[
   return picked.slice(0, count);
 }
 
+function canonicalCorridorId(parentId: number, childId: number): string {
+  return parentId < childId
+    ? `${parentId}-${childId}`
+    : `${childId}-${parentId}`;
+}
+
+function corridorCells(
+  points: [number, number][],
+): Point[] {
+  const result = new Map<string, Point>();
+
+  for (let index = 0; index < points.length - 1; index++) {
+    const [x0, y0] = points[index];
+    const [x1, y1] = points[index + 1];
+
+    if (y0 === y1) {
+      const start = Math.ceil(Math.min(x0, x1) - 0.5) + 0.5;
+      const end = Math.floor(Math.max(x0, x1) - 0.5) + 0.5;
+
+      for (let gx = start; gx <= end + 0.001; gx++) {
+        result.set(`${gx}:${y0}`, { x: 0, y: 0, gx, gy: y0 });
+      }
+
+      continue;
+    }
+
+    const start = Math.ceil(Math.min(y0, y1) - 0.5) + 0.5;
+    const end = Math.floor(Math.max(y0, y1) - 0.5) + 0.5;
+
+    for (let gy = start; gy <= end + 0.001; gy++) {
+      result.set(`${x0}:${gy}`, { x: 0, y: 0, gx: x0, gy });
+    }
+  }
+
+  return [...result.values()];
+}
+
+function corridorTrapPoint(
+  ctx: RenderContext,
+  corridorId: string,
+  seed: string,
+  occupied: Set<string>,
+): Point | null {
+  const corridor = ctx.corridors.find(
+    (item) => canonicalCorridorId(item.parentId, item.childId) === corridorId,
+  );
+
+  if (!corridor) return null;
+
+  const cells = corridorCells(corridor.points);
+  const interior = cells.length > 2 ? cells.slice(1, -1) : cells;
+  const available = interior.filter((point) => !occupied.has(`${point.gx}:${point.gy}`));
+  const candidates = available.length ? available : interior;
+
+  if (!candidates.length) return null;
+
+  const point = candidates[hashSeed(seed) % candidates.length];
+  occupied.add(`${point.gx}:${point.gy}`);
+
+  const [x, y] = ctx.toPx(point.gx!, point.gy!);
+  return { ...point, x, y };
+}
+
 export function getNarrativeContentMarkers(
   ctx: RenderContext,
   narratives: RoomNarrative[] = [],
 ): NarrativeContentMarker[] {
   const result: NarrativeContentMarker[] = [];
+  const occupiedCorridorCells = new Set<string>();
 
   for (const narrative of narratives) {
     const room = ctx.byId.get(narrative.id);
@@ -266,13 +340,16 @@ export function getNarrativeContentMarkers(
 
     const capacity = roomMarkerCapacity(ctx, room);
     const markers = expandContent(narrative, capacity);
-    if (!markers.length) continue;
 
-    const points = pickMarkerPoints(ctx, room, markers.length);
+    const roomMarkers = markers.filter((marker) => marker.placement === 'room');
+    const corridorMarkers = markers.filter(
+      (marker) => marker.placement === 'corridor' && marker.corridorId,
+    );
 
-    markers.forEach((marker, index) => {
-      const point = points[index];
+    const roomPoints = pickMarkerPoints(ctx, room, roomMarkers.length);
 
+    roomMarkers.forEach((marker, index) => {
+      const point = roomPoints[index];
       if (!point || point.gx === undefined || point.gy === undefined) return;
 
       result.push({
@@ -281,6 +358,35 @@ export function getNarrativeContentMarkers(
         kind: marker.kind,
         description: marker.description,
         content: marker.content,
+        placement: 'room',
+        corridorId: null,
+        gx: point.gx,
+        gy: point.gy,
+        x: point.x,
+        y: point.y,
+      });
+    });
+
+    corridorMarkers.forEach((marker, index) => {
+      const corridorId = marker.corridorId!;
+
+      const point = corridorTrapPoint(
+        ctx,
+        corridorId,
+        `${narrative.id}:${index}:${marker.description}`,
+        occupiedCorridorCells,
+      );
+
+      if (!point || point.gx === undefined || point.gy === undefined) return;
+
+      result.push({
+        id: `${narrative.id}:corridor:${index}:trap`,
+        roomId: narrative.id,
+        kind: 'trap',
+        description: marker.description,
+        content: marker.content,
+        placement: 'corridor',
+        corridorId,
         gx: point.gx,
         gy: point.gy,
         x: point.x,
@@ -299,26 +405,12 @@ export function renderNarrativeContent(
   const markers = getNarrativeContentMarkers(ctx, narratives);
 
   markers.forEach((marker) => {
-    if (
-      marker.kind === 'enemy' ||
-      marker.kind === 'loot'
-    ) {
+    if (marker.kind === 'enemy' || marker.kind === 'loot') {
       return;
     }
 
-    marker.element = drawNarrativeElementMarker(
-      ctx,
-      marker.kind,
-      marker.x,
-      marker.y,
-      MARKER_SIZE,
-      marker.description,
-    );
-
-    marker.element.setAttribute(
-      'data-content-id',
-      marker.id,
-    );
+    marker.element = drawNarrativeElementMarker(ctx, marker.kind, marker.x, marker.y, MARKER_SIZE, marker.description);
+    marker.element.setAttribute('data-content-id', marker.id);
   });
 
   return markers;

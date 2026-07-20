@@ -73,6 +73,8 @@ export interface NarrativeContent {
   hp?: number | null;
 
   loot?: LootItem[];
+  placement?: 'room' | 'corridor';
+  corridorId?: string | null;
 }
 
 export interface GenerateRequest {

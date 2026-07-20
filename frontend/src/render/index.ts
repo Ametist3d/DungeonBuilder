@@ -47,25 +47,14 @@ export function renderDungeon(
   renderWallHatching(ctx);
   renderScaleBar(ctx);
   renderDoors(ctx, entrance, dungeonExit, doors);
-  const contentMarkers = renderNarrativeContent(
-    ctx,
-    roomNarratives,
-  );
+  const contentMarkers = renderNarrativeContent(ctx, roomNarratives);
 
   renderLoot(ctx, contentMarkers);
   renderEnemies(ctx, contentMarkers);
 
-  const placedRoomIds = renderNarrativeLabels(
-    ctx,
-    roomNarratives,
-  );
+  const placedRoomIds = renderNarrativeLabels(ctx, roomNarratives);
 
-  renderHeroes(
-    ctx,
-    entrance,
-    doors,
-    contentMarkers,
-  );
+  renderHeroes(ctx, entrance, doors, contentMarkers);
 
   return placedRoomIds;
 }

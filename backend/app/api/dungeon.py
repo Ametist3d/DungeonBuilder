@@ -21,22 +21,15 @@ def generate(req: GenerateRequest) -> GenerateResponse:
     count_rng = make_rng(seed + "#count")
     target = count_rng.randint(lo, hi)
 
-    rooms, corridors, entrance, exit_opening  = generate_dungeon(
+    rooms, corridors, entrance, exit_opening = generate_dungeon(
         seed, target, req.symmetry_break,
         shape_weights=(req.rect_pct, req.circle_pct, req.octagon_pct),
         accent_pct=req.accent_pct,
     )
 
     max_depth = max((r.depth for r in rooms), default=0)
-    
-    doors = build_doors(
-        rooms,
-        corridors,
-        entrance,
-        exit_opening,
-        seed,
-        req.closed_door_pct,
-    )
+
+    doors = build_doors(rooms, corridors, entrance, exit_opening, seed, req.closed_door_pct)
     return GenerateResponse(
         seed=seed,
         target=target,
@@ -95,14 +88,7 @@ def narrate(req: GenerateRequest) -> Any:
         shape_weights=(req.rect_pct, req.circle_pct, req.octagon_pct),
         accent_pct=req.accent_pct,
     )
-    doors = build_doors(
-        rooms,
-        corridors,
-        entrance,
-        exit_opening,
-        seed,
-        req.closed_door_pct,
-    )
+    doors = build_doors(rooms, corridors, entrance, exit_opening, seed, req.closed_door_pct)
 
     context = build_narrative_context(rooms, corridors, entrance, exit_opening, doors)
     return generate_narrative(context, req.llm_provider)

@@ -192,6 +192,23 @@ GROQ_JSON_SCHEMA = {
                                                 "additionalProperties": False,
                                             },
                                         },
+                                        "placement": {
+                                            "type": "string",
+                                            "enum": [
+                                                "room",
+                                                "corridor",
+                                            ],
+                                        },
+                                        "corridorId": {
+                                            "anyOf": [
+                                                {
+                                                    "type": "string",
+                                                },
+                                                {
+                                                    "type": "null",
+                                                },
+                                            ],
+                                        },
                                     },
                                     "required": [
                                         "type",
@@ -201,6 +218,8 @@ GROQ_JSON_SCHEMA = {
                                         "difficulty",
                                         "hp",
                                         "loot",
+                                        "placement",
+                                        "corridorId",
                                     ],
                                     "additionalProperties": False,
                                 },
@@ -324,7 +343,22 @@ def build_narrative_context(
         "n": len(rooms),
         "e": entrance.room_id,
         "x": exit_opening.room_id,
-        "k": "room=[id,depth,flags,links,closedDoors]; flags m=main h=hub d=dead a=accent; links 5c=corridor to room5, 5b=branch to room5; closedDoors to:material:lock:kKeyRoom; l=[doorId,doorRoom,otherRoom,keyRoom,keyName,keyType,material,lock,gate]",
+        "k": (
+            "room=[id,depth,flags,links,closedDoors]; "
+            "flags m=main h=hub d=dead a=accent; "
+            "links 5c=corridor to room5, 5b=branch to room5; "
+            "c=[corridorId,parentRoom,childRoom]; "
+            "closedDoors to:material:lock:kKeyRoom; "
+            "l=[doorId,doorRoom,otherRoom,keyRoom,keyName,keyType,material,lock,gate]"
+        ),
+        "c": [
+            [
+                f"{min(c.parent_id, c.child_id)}-{max(c.parent_id, c.child_id)}",
+                c.parent_id,
+                c.child_id,
+            ]
+            for c in corridors
+        ],
         "r": [
             [
                 room.id,

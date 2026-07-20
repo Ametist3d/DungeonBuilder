@@ -14,10 +14,10 @@ export interface PlayerStats {
 type StatsListener = (stats: PlayerStats) => void;
 
 const BASE_STATS: PlayerStats = {
-  hp: 20,
-  maxHp: 20,
-  mp: 10,
-  maxMp: 10,
+  hp: 40,
+  maxHp: 40,
+  mp: 20,
+  maxMp: 20,
   defense: 0,
   attack: 3,
   gold: 0,
@@ -39,18 +39,14 @@ function cloneStats(stats: PlayerStats): PlayerStats {
 }
 
 function getHud(): HTMLDivElement {
-  let hud = document.getElementById(
-    'player-hud',
-  ) as HTMLDivElement | null;
+  let hud = document.getElementById('player-hud') as HTMLDivElement | null;
 
   if (!hud) {
     hud = document.createElement('div');
     hud.id = 'player-hud';
     hud.className = 'player-hud';
 
-    document
-      .getElementById('canvas-wrap')
-      ?.appendChild(hud);
+    document.getElementById('canvas-wrap')?.appendChild(hud);
   }
 
   return hud;
@@ -70,15 +66,8 @@ function renderHud(): void {
     <div class="player-hud-status">${statusText}</div>
   `;
 
-  hud.classList.toggle(
-    'combat-active',
-    combatActive,
-  );
-
-  hud.classList.toggle(
-    'player-defeated',
-    defeated,
-  );
+  hud.classList.toggle('combat-active', combatActive);
+  hud.classList.toggle('player-defeated', defeated);
 }
 
 function emit(): void {
@@ -103,9 +92,7 @@ export function getPlayerStats(): PlayerStats {
   return cloneStats(state);
 }
 
-export function subscribePlayerStats(
-  listener: StatsListener,
-): () => void {
+export function subscribePlayerStats(listener: StatsListener): () => void {
   listeners.add(listener);
   listener(cloneStats(state));
 
@@ -114,11 +101,7 @@ export function subscribePlayerStats(
   };
 }
 
-export function setPlayerStatus(
-  text: string,
-  activeCombat = false,
-  isDefeated = false,
-): void {
+export function setPlayerStatus(text: string, activeCombat = false, isDefeated = false): void {
   statusText = text;
   combatActive = activeCombat;
   defeated = isDefeated;
@@ -126,15 +109,8 @@ export function setPlayerStatus(
 }
 
 export function damagePlayer(rawDamage: number): number {
-  const damage = Math.max(
-    1,
-    Math.round(rawDamage) - state.defense,
-  );
-
-  state.hp = Math.max(
-    0,
-    state.hp - damage,
-  );
+  const damage = Math.max(1, Math.round(rawDamage) - state.defense);
+  state.hp = Math.max(0, state.hp - damage);
 
   emit();
   return damage;
@@ -142,24 +118,15 @@ export function damagePlayer(rawDamage: number): number {
 
 export function applyLoot(items: LootItem[]): void {
   for (const item of items) {
-    const value = Math.max(
-      0,
-      Math.round(Number(item.value) || 0),
-    );
+    const value = Math.max(0, Math.round(Number(item.value) || 0));
 
     switch (item.type) {
       case 'armor':
-        state.defense = Math.max(
-          state.defense,
-          value,
-        );
+        state.defense = Math.max(state.defense, value);
         break;
 
       case 'weapon':
-        state.attack = Math.max(
-          state.attack,
-          value,
-        );
+        state.attack = Math.max(state.attack, value);
         break;
 
       case 'treasure':
@@ -173,17 +140,11 @@ export function applyLoot(items: LootItem[]): void {
         break;
 
       case 'hpPotion':
-        state.hp = Math.min(
-          state.maxHp,
-          state.hp + value,
-        );
+        state.hp = Math.min(state.maxHp, state.hp + value);
         break;
 
       case 'manaPotion':
-        state.mp = Math.min(
-          state.maxMp,
-          state.mp + value,
-        );
+        state.mp = Math.min(state.maxMp, state.mp + value);
         break;
     }
   }
