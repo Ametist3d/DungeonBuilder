@@ -21,6 +21,7 @@ export function renderDungeon(
   dungeonExit: Opening | null = null,
   doors: Door[] = [],
   roomNarratives: RoomNarrative[] = [],
+  options: { carryProgress?: boolean; onDungeonExit?: () => void } = {},
 ): Set<number> {
   svg.innerHTML = '';
   if (rooms.length === 0) return new Set<number>();
@@ -50,11 +51,12 @@ export function renderDungeon(
   const contentMarkers = renderNarrativeContent(ctx, roomNarratives);
 
   renderLoot(ctx, contentMarkers);
-  renderEnemies(ctx, contentMarkers);
+  renderEnemies(ctx, contentMarkers, !options.carryProgress);
 
   const placedRoomIds = renderNarrativeLabels(ctx, roomNarratives);
 
-  renderHeroes(ctx, entrance, doors, contentMarkers);
+  renderHeroes(ctx, entrance, dungeonExit, doors, contentMarkers, options.carryProgress ?? false, options.onDungeonExit);
+
 
   return placedRoomIds;
 }

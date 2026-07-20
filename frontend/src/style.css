@@ -1104,6 +1104,27 @@ text.room-label {
   font-weight: 800;
 }
 
+.player-hud-xp {
+  margin-top: 6px;
+  height: 4px;
+
+  border-radius: 2px;
+  overflow: hidden;
+
+  background:
+    color-mix(
+      in srgb,
+      var(--border) 45%,
+      transparent
+    );
+}
+
+.player-hud-xp-bar {
+  height: 100%;
+  background: var(--accent);
+  transition: width 0.25s ease;
+}
+
 .player-hud-status {
   margin-top: 6px;
   padding-top: 5px;
@@ -1360,6 +1381,11 @@ text.room-label {
     monospace;
 
   font-weight: 700;
+}
+
+.inventory-item-gold .inventory-item-name {
+  color: var(--accent);
+  font-weight: 800;
 }
 
 .narrative-element-marker-trap.trap-triggered {

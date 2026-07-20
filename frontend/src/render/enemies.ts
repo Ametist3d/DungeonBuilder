@@ -7,6 +7,7 @@ import type {
 import { NS, type RenderContext } from './context';
 import type { NarrativeContentMarker } from './narrative-content';
 import {
+  addExperience,
   damagePlayer as applyPlayerDamage,
   getPlayerStats,
   resetPlayerStats,
@@ -63,6 +64,16 @@ const ENEMY_RANGE: Record<EnemyType, number> = {
   ranged: 4,
   mage: 3,
 };
+
+const ENEMY_XP: Record<EnemyDifficulty, number> = {
+  normal: 25,
+  elite: 100,
+  boss: 400,
+};
+
+function levelScale(level: number): number {
+  return 1 + Math.max(0, level - 1) * 0.12;
+}
 
 const state: {
   ctx: RenderContext | null;
@@ -423,6 +434,10 @@ function tryPlayerAttack(enemy: EnemyState): void {
     !enemy.active ||
     enemy.hp <= 0
   ) {
+    if (enemy.hp === 0) {  
+      hideTooltip();
+      addExperience(ENEMY_XP[enemy.difficulty]);
+    }
     return;
   }
 
@@ -466,7 +481,8 @@ function enemyFromMarker(marker: NarrativeContentMarker): EnemyState {
   const content: NarrativeContent = marker.content;
   const difficulty = normalizeDifficulty(content.difficulty);
   const type = normalizeEnemyType(content.enemyType);
-  const maxHp = ENEMY_HP[difficulty];
+  const scale = levelScale(getPlayerStats().level);
+  const maxHp = Math.round(ENEMY_HP[difficulty] * scale);
 
   const enemy = {
     id: marker.id,
@@ -476,7 +492,7 @@ function enemyFromMarker(marker: NarrativeContentMarker): EnemyState {
     difficulty,
     hp: maxHp,
     maxHp,
-    damage: ENEMY_DAMAGE[difficulty],
+    damage: Math.round(ENEMY_DAMAGE[difficulty] * scale),
     range: ENEMY_RANGE[type],
     gx: marker.gx,
     gy: marker.gy,
@@ -491,9 +507,10 @@ function enemyFromMarker(marker: NarrativeContentMarker): EnemyState {
 export function renderEnemies(
   ctx: RenderContext,
   markers: NarrativeContentMarker[] = [],
+  resetStats = true,
 ): void {
   hideTooltip();
-  resetPlayerStats();
+ if (resetStats) resetPlayerStats();
 
   state.ctx = ctx;
   state.hero = null;

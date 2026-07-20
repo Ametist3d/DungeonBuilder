@@ -9,6 +9,8 @@ export interface PlayerStats {
   attack: number;
   gold: number;
   spells: string[];
+  level: number;
+  xp: number;
 }
 
 type StatsListener = (stats: PlayerStats) => void;
@@ -22,7 +24,17 @@ const BASE_STATS: PlayerStats = {
   attack: 3,
   gold: 0,
   spells: [],
+  level: 1,
+  xp: 0,
 };
+
+const XP_THRESHOLDS = [
+  0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000,
+  85000, 100000, 120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000,
+];
+const MAX_LEVEL = XP_THRESHOLDS.length;
+const HP_PER_LEVEL = 8;
+const MP_PER_LEVEL = 4;
 
 let state: PlayerStats = cloneStats(BASE_STATS);
 let statusText = 'Exploration';
@@ -52,16 +64,30 @@ function getHud(): HTMLDivElement {
   return hud;
 }
 
+function xpProgressPercent(): number {
+  if (state.level >= MAX_LEVEL) return 100;
+
+  const prev = XP_THRESHOLDS[state.level - 1];
+  const next = XP_THRESHOLDS[state.level];
+  const span = next - prev;
+
+  return span > 0 ? Math.max(0, Math.min(100, ((state.xp - prev) / span) * 100)) : 100;
+}
+
 function renderHud(): void {
   const hud = getHud();
 
   hud.innerHTML = `
     <div class="player-hud-stats">
+      <span>Lv <b>${state.level}</b></span>
       <span>HP <b>${state.hp}/${state.maxHp}</b></span>
       <span>MP <b>${state.mp}/${state.maxMp}</b></span>
       <span>DEF <b>${state.defense}</b></span>
       <span>ATK <b>${state.attack}</b></span>
       <span>Gold <b>${state.gold}</b></span>
+    </div>
+    <div class="player-hud-xp">
+      <div class="player-hud-xp-bar" style="width:${xpProgressPercent()}%"></div>
     </div>
     <div class="player-hud-status">${statusText}</div>
   `;
@@ -150,4 +176,33 @@ export function applyLoot(items: LootItem[]): void {
   }
 
   emit();
+}
+
+export function addExperience(amount: number): { levels: number; hpGain: number; mpGain: number } {
+  const gained = Math.max(0, Math.round(amount));
+  if (gained <= 0) return { levels: 0, hpGain: 0, mpGain: 0 };
+
+  state.xp += gained;
+
+  let levels = 0;
+  let hpGain = 0;
+  let mpGain = 0;
+
+  while (state.level < MAX_LEVEL && state.xp >= XP_THRESHOLDS[state.level]) {
+    state.level += 1;
+    levels += 1;
+    hpGain += HP_PER_LEVEL;
+    mpGain += MP_PER_LEVEL;
+  }
+
+  if (levels > 0) {
+    state.maxHp += hpGain;
+    state.hp += hpGain;
+    state.maxMp += mpGain;
+    state.mp += mpGain;
+  }
+
+  emit();
+
+  return { levels, hpGain, mpGain };
 }

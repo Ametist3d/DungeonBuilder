@@ -5,6 +5,7 @@ import type { DungeonNarrative, GenerateRequest, GenerateResponse, LLMProvider, 
 import { setupPanZoom } from './pan-zoom';
 import { setupMapOverlay } from './map-overlay';
 import { setupHeroControls } from './render/heroes';
+import { addExperience } from './render/player-stats';
 
 const svg = document.getElementById('canvas') as unknown as SVGSVGElement;
 const canvasWrap = document.getElementById('canvas-wrap') as HTMLDivElement;
@@ -136,7 +137,16 @@ function renderNarrative(
   }
 }
 
-async function runGenerate(): Promise<void> {
+function handleDungeonExit(): void {
+  const roomCount = currentDungeon?.rooms.length ?? 6;
+  addExperience(150 + roomCount * 15);
+
+  window.setTimeout(() => {
+    void runGenerate(true);
+  }, 300);
+}
+
+async function runGenerate(carryProgress = false): Promise<void> {
   const seed = randomSeedCheck.checked || !seedInput.value.trim()
     ? randomSeedString()
     : seedInput.value.trim();
@@ -151,7 +161,10 @@ async function runGenerate(): Promise<void> {
     currentDungeon = result;
     currentNarrative = null;
 
-    renderDungeon(svg, result.rooms, result.corridors, result.entrance, result.exit, result.doors);
+    renderDungeon(
+      svg, result.rooms, result.corridors, result.entrance, result.exit, result.doors,
+      [], { carryProgress, onDungeonExit: handleDungeonExit },
+    );
     panZoom.reset();
 
     statRooms.textContent = String(result.rooms.length);
@@ -186,6 +199,7 @@ async function runNarrative(): Promise<void> {
         currentDungeon.exit,
         currentDungeon.doors,
         narrative.rooms,
+        { carryProgress: true, onDungeonExit: handleDungeonExit },
       );
 
       requestAnimationFrame(() => {
@@ -225,11 +239,11 @@ accentPctRange.addEventListener('input', () => {
   accentPctVal.textContent = accentPctRange.value;
 });
 
-genBtn.addEventListener('click', runGenerate);
+genBtn.addEventListener('click', () => { void runGenerate(false); });
 addNarrativeBtn.addEventListener('click', runNarrative);
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') runGenerate();
+  if (e.key === 'Enter') void runGenerate(false);
 });
 
 closedDoorPctRange.addEventListener('input', () => {
@@ -238,4 +252,4 @@ closedDoorPctRange.addEventListener('input', () => {
 
 seedInput.value = randomSeedString();
 setScenarioHeader();
-runGenerate();
+void runGenerate(false);

@@ -2,6 +2,7 @@ import type {
   LootItem,
   LootType,
 } from '../types';
+import { subscribePlayerStats } from './player-stats';
 
 export type InventoryKind =
   | 'key'
@@ -28,6 +29,12 @@ interface InventoryEntry {
 const inventory = new Map<string, InventoryEntry>();
 
 let collapsed = false;
+let goldTotal = 0;
+
+subscribePlayerStats((stats) => {
+  goldTotal = stats.gold;
+  renderInventory();
+});
 
 const KIND_LABELS: Record<InventoryKind, string> = {
   key: 'Key',
@@ -122,9 +129,26 @@ function renderInventory(): void {
 
   list.replaceChildren();
 
+  if (goldTotal > 0) {
+    const goldItem = document.createElement('li');
+    goldItem.className = 'inventory-item inventory-item-gold';
+
+    const goldName = document.createElement('span');
+    goldName.className = 'inventory-item-name';
+    goldName.textContent = 'Treasure';
+
+    const goldValue = document.createElement('span');
+    goldValue.className = 'inventory-item-value';
+    goldValue.textContent = `${goldTotal} gold`;
+
+    goldItem.appendChild(goldName);
+    goldItem.appendChild(goldValue);
+    list.appendChild(goldItem);
+  }
+
   const entries = [...inventory.values()];
 
-  empty.hidden = entries.length > 0;
+  empty.hidden = entries.length > 0 || goldTotal > 0;
 
   entries.forEach((entry) => {
     const item = document.createElement('li');
@@ -181,12 +205,24 @@ export function addInventoryItem(item: InventoryItemInput): void {
 export function addLootItems(
   items: LootItem[],
 ): void {
-  items.forEach((item) => {
-    addInventoryItem({
-      id: `loot:${item.type}:${item.name}`,
-      kind: item.type,
-      name: item.name,
-      value: item.value,
+  items
+    .filter((item) => item.type !== 'treasure')
+    .forEach((item) => {
+      addInventoryItem({
+        id: `loot:${item.type}:${item.name}`,
+        kind: item.type,
+        name: item.name,
+        value: item.value,
+      });
     });
-  });
+}
+
+export function clearUnlockItems(): void {
+  for (const [id, entry] of inventory) {
+    if (entry.kind === 'key' || entry.kind === 'scroll' || entry.kind === 'mechanism') {
+      inventory.delete(id);
+    }
+  }
+
+  renderInventory();
 }

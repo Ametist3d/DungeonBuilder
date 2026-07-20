@@ -12,7 +12,7 @@ import {
 import {pickupLootAt} from './loot';
 import {subscribePlayerStats, type PlayerStats,} from './player-stats';
 import {applyStepEffects, setupEnvironmentEffects,} from './environment-effects';
-import {addInventoryItem, resetInventory, type InventoryKind,} from './inventory'
+import {addInventoryItem, resetInventory, clearUnlockItems, type InventoryKind,} from './inventory'
 
 export type HeroClass = 'wanderer';
 
@@ -35,6 +35,9 @@ interface HeroState {
     pickups: Map<string, NarrativeContentMarker>;
     doors: Door[];
     unsubscribeStats: (() => void) | null;
+    exit: Opening | null;
+    leaving: boolean;
+    onDungeonExit: (() => void) | null;
 }
 
 const HERO_STEP = 1;
@@ -50,6 +53,9 @@ const heroState: HeroState = {
     pickups: new Map(),
     doors: [],
     unsubscribeStats: null,
+    exit: null,
+    leaving: false,
+    onDungeonExit: null,
 };
 
 function snapHalf(v: number): number {
@@ -527,17 +533,60 @@ function canMoveTo(next: Point): boolean {
     return true;
 }
 
+function exitStepTarget(): Point | null {
+    if (!heroState.ctx || !heroState.exit) return null;
+
+    const room = heroState.ctx.byId.get(heroState.exit.roomId);
+    if (!room) return null;
+
+    return entranceHeroPosition(room, heroState.exit);
+}
+
+function isExitStep(next: Point): boolean {
+    if (!heroState.exit) return false;
+
+    const inner = exitStepTarget();
+    if (!inner || heroState.gx !== inner.gx || heroState.gy !== inner.gy) return false;
+
+    const [dirX, dirY] = DIR_VECTOR[heroState.exit.direction];
+    return next.gx === inner.gx + dirX && next.gy === inner.gy + dirY;
+}
+
+function triggerDungeonExit(next: Point): void {
+    heroState.gx = next.gx;
+    heroState.gy = next.gy;
+    heroState.leaving = true;
+
+    updateHeroTransform();
+
+    const callback = heroState.onDungeonExit;
+    heroState.onDungeonExit = null;
+    callback?.();
+}
+
 export function renderHeroes(
   ctx: RenderContext,
   entrance: Opening | null,
+  dungeonExit: Opening | null = null,
   doors: Door[] = [],
   contentMarkers: NarrativeContentMarker[] = [],
+  carryProgress = false,
+  onDungeonExit?: () => void,
 ): void {
   heroState.unsubscribeStats?.();
   heroState.unsubscribeStats = null;
+  
+  if (carryProgress) {
+    clearUnlockItems();
+  } else {
+    resetInventory();
+  }
 
-  resetInventory();
   setupEnvironmentEffects(contentMarkers);
+
+  heroState.exit = dungeonExit;
+  heroState.leaving = false;
+  heroState.onDungeonExit = onDungeonExit ?? null;
 
   if (!entrance) {
     heroState.group = null;
@@ -600,7 +649,7 @@ export function renderHeroes(
 }
 
 export function moveHero(dx: number, dy: number): void {
-  if (!heroState.ctx || !heroState.group || !canHeroAct()) {
+  if (!heroState.ctx || !heroState.group || !canHeroAct() || heroState.leaving) {
     return;
   }
 
@@ -609,6 +658,11 @@ export function moveHero(dx: number, dy: number): void {
     gy: snapHalf(heroState.gy + dy * HERO_STEP),
   };
 
+  if (isExitStep(next)) {
+    triggerDungeonExit(next);
+    return;
+  }
+  
   if (isEnemyCell(next.gx, next.gy)) {
     return;
   }
