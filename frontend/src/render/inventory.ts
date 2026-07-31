@@ -2,7 +2,7 @@ import type {
   LootItem,
   LootType,
 } from '../types';
-import { subscribePlayerStats } from './player-stats';
+import { subscribePlayerStats, getPlayerStats, applyLoot, equipWeapon, unequipWeapon, equipArmor, unequipArmor } from './player-stats';
 
 export type InventoryKind =
   | 'key'
@@ -111,6 +111,68 @@ function valueText(entry: InventoryEntry): string {
   }
 }
 
+function flashDenied(id: string): void {
+  const row = getPanel().querySelector(`[data-item-id="${id}"]`);
+  if (!row) return;
+
+  row.classList.remove('inventory-item-denied');
+  void (row as HTMLElement).offsetWidth; // restart animation
+  row.classList.add('inventory-item-denied');
+}
+
+function useConsumable(entry: InventoryEntry): void {
+  const stats = getPlayerStats();
+  const isFull = entry.kind === 'hpPotion' ? stats.hp >= stats.maxHp : stats.mp >= stats.maxMp;
+
+  if (isFull) {
+    flashDenied(entry.id);
+    return;
+  }
+
+  applyLoot([{
+    type: entry.kind as 'hpPotion' | 'manaPotion',
+    value: entry.value ?? 0,
+    name: entry.name,
+  }]);
+
+  entry.quantity -= 1;
+  if (entry.quantity <= 0) {
+    inventory.delete(entry.id);
+  }
+
+  renderInventory();
+}
+
+function toggleWeapon(entry: InventoryEntry): void {
+  const stats = getPlayerStats();
+
+  if (stats.equippedWeaponId === entry.id) {
+    unequipWeapon();
+  } else {
+    equipWeapon(entry.id, entry.value ?? 0);
+  }
+}
+
+function toggleArmor(entry: InventoryEntry): void {
+  const stats = getPlayerStats();
+
+  if (stats.equippedArmorId === entry.id) {
+    unequipArmor();
+  } else {
+    equipArmor(entry.id, entry.value ?? 0);
+  }
+}
+
+function handleItemClick(entry: InventoryEntry): void {
+  if (entry.kind === 'hpPotion' || entry.kind === 'manaPotion') {
+    useConsumable(entry);
+  } else if (entry.kind === 'weapon') {
+    toggleWeapon(entry);
+  } else if (entry.kind === 'armor') {
+    toggleArmor(entry);
+  }
+}
+
 function renderInventory(): void {
   const panel = getPanel();
 
@@ -150,10 +212,26 @@ function renderInventory(): void {
 
   empty.hidden = entries.length > 0 || goldTotal > 0;
 
+  const stats = getPlayerStats();
+  const interactiveKinds: InventoryKind[] = ['weapon', 'armor', 'hpPotion', 'manaPotion'];
+
   entries.forEach((entry) => {
     const item = document.createElement('li');
     item.className = 'inventory-item';
+    item.setAttribute('data-item-id', entry.id);
 
+    const isEquipped =
+      (entry.kind === 'weapon' && stats.equippedWeaponId === entry.id) ||
+      (entry.kind === 'armor' && stats.equippedArmorId === entry.id);
+
+    if (interactiveKinds.includes(entry.kind)) {
+      item.classList.add('inventory-item-clickable');
+      item.addEventListener('click', () => handleItemClick(entry));
+    }
+
+    if (isEquipped) {
+      item.classList.add('inventory-item-equipped');
+    }
     const name = document.createElement('span');
     name.className = 'inventory-item-name';
 
@@ -162,7 +240,7 @@ function renderInventory(): void {
       : '';
 
     name.textContent =
-      `${KIND_LABELS[entry.kind]}: ${entry.name}${quantity}`;
+      `${isEquipped ? '✓ ' : ''}${KIND_LABELS[entry.kind]}: ${entry.name}${quantity}`;
 
     const value = valueText(entry);
 

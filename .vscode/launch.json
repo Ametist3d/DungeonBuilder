@@ -1,0 +1,32 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Backend: FastAPI (uvicorn)",
+      "type": "debugpy",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": ["app.main:app", "--port", "8088"],
+      "cwd": "${workspaceFolder}/backend",
+      "python": "${workspaceFolder}/.venv/Scripts/python.exe",
+      "justMyCode": false,
+      "console": "integratedTerminal"
+    },
+    {
+      "name": "Frontend: Chrome",
+      "type": "chrome",
+      "request": "launch",
+      "url": "http://localhost:5174",
+      "webRoot": "${workspaceFolder}/frontend",
+      "sourceMaps": true,
+      "preLaunchTask": "frontend: dev"
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Full stack",
+      "configurations": ["Backend: FastAPI (uvicorn)", "Frontend: Chrome"],
+      "stopAll": true
+    }
+  ]
+}

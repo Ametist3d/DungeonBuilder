@@ -11,6 +11,7 @@ import { renderDoors } from './doors';
 import { renderHeroes } from './heroes';
 import { renderEnemies } from './enemies';
 import { renderLoot } from './loot';
+import { renderTraders } from './trader';
 
 
 export function renderDungeon(
@@ -52,7 +53,8 @@ export function renderDungeon(
 
   renderLoot(ctx, contentMarkers);
   renderEnemies(ctx, contentMarkers, !options.carryProgress);
-
+  renderTraders(ctx, contentMarkers);
+  
   const placedRoomIds = renderNarrativeLabels(ctx, roomNarratives);
 
   renderHeroes(ctx, entrance, dungeonExit, doors, contentMarkers, options.carryProgress ?? false, options.onDungeonExit);

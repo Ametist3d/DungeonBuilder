@@ -11,6 +11,8 @@ export interface PlayerStats {
   spells: string[];
   level: number;
   xp: number;
+  equippedWeaponId: string | null;
+  equippedArmorId: string | null;
 }
 
 type StatsListener = (stats: PlayerStats) => void;
@@ -26,7 +28,12 @@ const BASE_STATS: PlayerStats = {
   spells: [],
   level: 1,
   xp: 0,
+  equippedWeaponId: null,
+  equippedArmorId: null,
 };
+
+const BASE_ATTACK = BASE_STATS.attack;
+const BASE_DEFENSE = BASE_STATS.defense;
 
 const XP_THRESHOLDS = [
   0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000,
@@ -62,6 +69,16 @@ function getHud(): HTMLDivElement {
   }
 
   return hud;
+}
+
+export function spendGold(amount: number): boolean {
+  const cost = Math.max(0, Math.round(amount));
+  if (state.gold < cost) return false;
+
+  state.gold -= cost;
+  emit();
+
+  return true;
 }
 
 function xpProgressPercent(): number {
@@ -205,4 +222,28 @@ export function addExperience(amount: number): { levels: number; hpGain: number;
   emit();
 
   return { levels, hpGain, mpGain };
+}
+
+export function equipWeapon(id: string, attack: number): void {
+  state.equippedWeaponId = id;
+  state.attack = attack;
+  emit();
+}
+
+export function unequipWeapon(): void {
+  state.equippedWeaponId = null;
+  state.attack = BASE_ATTACK;
+  emit();
+}
+
+export function equipArmor(id: string, defense: number): void {
+  state.equippedArmorId = id;
+  state.defense = defense;
+  emit();
+}
+
+export function unequipArmor(): void {
+  state.equippedArmorId = null;
+  state.defense = BASE_DEFENSE;
+  emit();
 }

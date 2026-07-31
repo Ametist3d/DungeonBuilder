@@ -23,6 +23,8 @@ const LOOT_LABELS: Record<LootType, string> = {
   manaPotion: 'Mana potion',
 };
 
+const INSTANT_LOOT_TYPES: LootType[] = ['treasure', 'spell'];
+
 function cellKey(gx: number, gy: number): string {
   return `${Math.round(gx * 2)}:${Math.round(gy * 2)}`;
 }
@@ -196,7 +198,9 @@ export function pickupLootAt(
 
   loot.picked = true;
 
-  applyLoot(loot.items);
+  const instant = loot.items.filter((item) => INSTANT_LOOT_TYPES.includes(item.type));
+  if (instant.length) applyLoot(instant);
+
   addLootItems(loot.items);
 
   loot.element.classList.add('picked');

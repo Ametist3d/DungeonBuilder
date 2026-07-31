@@ -10,6 +10,7 @@ import {
     notifyHeroPositionChanged,
 } from './enemies';
 import {pickupLootAt} from './loot';
+import { notifyHeroEnteredCell } from './trader';
 import {subscribePlayerStats, type PlayerStats,} from './player-stats';
 import {applyStepEffects, setupEnvironmentEffects,} from './environment-effects';
 import {addInventoryItem, resetInventory, clearUnlockItems, type InventoryKind,} from './inventory'
@@ -631,6 +632,7 @@ export function renderHeroes(
 
   updateHeroTransform();
   pickupAtCurrentCell();
+  notifyHeroEnteredCell(heroState.gx, heroState.gy);
 
   bindHeroCombat({
     getPosition: () => ({
@@ -691,6 +693,7 @@ export function moveHero(dx: number, dy: number): void {
   }
 
   pickupAtCurrentCell();
+  notifyHeroEnteredCell(heroState.gx, heroState.gy);
   completeHeroMove();
 }
 
